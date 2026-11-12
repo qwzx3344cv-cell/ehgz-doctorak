@@ -1,0 +1,219 @@
+{
+  "entities": {
+    "Doctor": {
+      "title": "Doctor",
+      "description": "Registered clinic doctor profile and services",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "specialty": { "type": "string", "maxLength": 100 },
+        "phone1": { "type": "string", "maxLength": 30 },
+        "phone2": { "type": "string", "maxLength": 30 },
+        "address": { "type": "string", "maxLength": 300 },
+        "governorate": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 50 },
+        "center": { "type": "string", "maxLength": 50 },
+        "price": { "type": "number" },
+        "clinicPhoto": { "type": "string", "maxLength": 500000 },
+        "doctorPhoto": { "type": "string", "maxLength": 500000 },
+        "workingHours": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "enum": ["approved", "pending", "rejected", "blocked"] },
+        "otpCode": { "type": "string", "maxLength": 10 },
+        "isVerified": { "type": "boolean" },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "specialty", "phone1", "address", "price", "status", "createdAt"]
+    },
+    "Lab": {
+      "title": "Lab",
+      "description": "Registered medical analysis lab profile and tests",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "address": { "type": "string", "maxLength": 300 },
+        "governorate": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 50 },
+        "center": { "type": "string", "maxLength": 50 },
+        "labPhoto": { "type": "string", "maxLength": 500000 },
+        "startingPrice": { "type": "number" },
+        "workingHours": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "enum": ["approved", "pending", "rejected", "blocked"] },
+        "otpCode": { "type": "string", "maxLength": 10 },
+        "isVerified": { "type": "boolean" },
+        "isDemo": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "tests": { "type": "array" }
+      },
+      "required": ["name", "phone", "address", "startingPrice", "status", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Patient clinic or laboratory appointment booking",
+      "type": "object",
+      "properties": {
+        "bookingCode": { "type": "string", "maxLength": 30 },
+        "providerType": { "type": "string", "enum": ["doctor", "lab"] },
+        "providerId": { "type": "string", "maxLength": 100 },
+        "providerName": { "type": "string", "maxLength": 100 },
+        "providerSpecialtyOrType": { "type": "string", "maxLength": 100 },
+        "providerAddress": { "type": "string", "maxLength": 300 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "patientPhone": { "type": "string", "maxLength": 30 },
+        "appointmentDate": { "type": "string", "maxLength": 30 },
+        "appointmentTime": { "type": "string", "maxLength": 50 },
+        "selectedTestName": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["bookingCode", "providerType", "providerId", "providerName", "patientName", "patientPhone", "price", "status", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Push notification record for patient or medical provider",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 150 },
+        "body": { "type": "string", "maxLength": 500 },
+        "recipientType": { "type": "string", "enum": ["patient", "doctor", "lab", "admin", "all"] },
+        "recipientId": { "type": "string", "maxLength": 100 },
+        "recipientPhone": { "type": "string", "maxLength": 30 },
+        "bookingId": { "type": "string", "maxLength": 100 },
+        "bookingCode": { "type": "string", "maxLength": 30 },
+        "type": { "type": "string", "enum": ["new_booking", "booking_confirmed", "booking_cancelled", "test"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "body", "recipientType", "type", "createdAt"]
+    },
+    "PushSubscription": {
+      "title": "PushSubscription",
+      "description": "Registered device push notification token or subscription profile",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["patient", "doctor", "lab", "admin"] },
+        "targetId": { "type": "string", "maxLength": 100 },
+        "targetName": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "token": { "type": "string", "maxLength": 1000 },
+        "permission": { "type": "string", "maxLength": 20 },
+        "userAgent": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["role", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Patient rating and written review for a clinic or laboratory",
+      "type": "object",
+      "properties": {
+        "providerId": { "type": "string", "maxLength": 100 },
+        "providerType": { "type": "string", "enum": ["doctor", "lab"] },
+        "providerName": { "type": "string", "maxLength": 100 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "patientPhone": { "type": "string", "maxLength": 30 },
+        "bookingId": { "type": "string", "maxLength": 100 },
+        "bookingCode": { "type": "string", "maxLength": 30 },
+        "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["providerId", "providerType", "providerName", "patientName", "rating", "comment", "createdAt"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Global application configuration such as commission switch",
+      "type": "object",
+      "properties": {
+        "isCommissionEnabled": { "type": "boolean" },
+        "commissionRate": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["isCommissionEnabled", "commissionRate"]
+    },
+    "EPrescription": {
+      "title": "EPrescription",
+      "description": "Electronic prescription issued by a doctor for a patient",
+      "type": "object",
+      "properties": {
+        "prescriptionCode": { "type": "string", "maxLength": 30 },
+        "bookingId": { "type": "string", "maxLength": 100 },
+        "bookingCode": { "type": "string", "maxLength": 30 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "patientPhone": { "type": "string", "maxLength": 30 },
+        "doctorId": { "type": "string", "maxLength": 100 },
+        "doctorName": { "type": "string", "maxLength": 100 },
+        "doctorSpecialty": { "type": "string", "maxLength": 100 },
+        "doctorPhone": { "type": "string", "maxLength": 30 },
+        "clinicAddress": { "type": "string", "maxLength": 300 },
+        "diagnosis": { "type": "string", "maxLength": 500 },
+        "medicines": { "type": "array" },
+        "advice": { "type": "string", "maxLength": 1000 },
+        "followUpDate": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["prescriptionCode", "patientName", "patientPhone", "doctorId", "doctorName", "diagnosis", "medicines", "createdAt"]
+    },
+    "MedicalRecordAttachment": {
+      "title": "MedicalRecordAttachment",
+      "description": "Patient uploaded previous lab test or scan file (PDF or Image)",
+      "type": "object",
+      "properties": {
+        "patientPhone": { "type": "string", "maxLength": 30 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 150 },
+        "type": { "type": "string", "enum": ["lab_test", "x_ray", "prescription", "report", "other"] },
+        "fileUrl": { "type": "string", "maxLength": 2000000 },
+        "fileName": { "type": "string", "maxLength": 200 },
+        "fileType": { "type": "string", "enum": ["image", "pdf"] },
+        "fileSize": { "type": "string", "maxLength": 30 },
+        "doctorOrLabName": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 30 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["patientPhone", "patientName", "title", "type", "fileUrl", "fileName", "fileType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/doctors/{doctorId}": {
+      "schema": "Doctor",
+      "description": "Collection of doctors registered in the platform"
+    },
+    "/labs/{labId}": {
+      "schema": "Lab",
+      "description": "Collection of medical laboratories registered in the platform"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of appointments booked by patients"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "NotificationItem",
+      "description": "Collection of instant push notification events"
+    },
+    "/push_subscriptions/{subscriptionId}": {
+      "schema": "PushSubscription",
+      "description": "Registered devices for web push and FCM"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Collection of ratings and reviews submitted by patients"
+    },
+    "/prescriptions/{prescriptionId}": {
+      "schema": "EPrescription",
+      "description": "Collection of electronic prescriptions issued by doctors"
+    },
+    "/medical_records/{recordId}": {
+      "schema": "MedicalRecordAttachment",
+      "description": "Collection of patient uploaded lab tests, x-rays, and medical documents"
+    },
+    "/settings/{settingId}": {
+      "schema": "PlatformSettings",
+      "description": "Global platform settings including commission"
+    }
+  }
+}

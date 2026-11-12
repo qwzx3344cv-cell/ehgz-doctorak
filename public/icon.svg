@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#0d9488"/>
+  <rect x="40" y="40" width="432" height="432" rx="96" fill="#0f766e" stroke="#5eead4" stroke-width="8" stroke-dasharray="16 12" opacity="0.3"/>
+  <!-- Calendar Body -->
+  <rect x="112" y="140" width="288" height="260" rx="36" fill="#ffffff"/>
+  <!-- Calendar Rings / Pegs -->
+  <rect x="160" y="100" width="36" height="64" rx="18" fill="#0f2a44"/>
+  <rect x="316" y="100" width="36" height="64" rx="18" fill="#0f2a44"/>
+  <!-- Top bar of calendar -->
+  <path d="M112 196H400" stroke="#0d9488" stroke-width="12" stroke-linecap="round"/>
+  <!-- Stethoscope in center -->
+  <path d="M190 240V290C190 326 218 356 256 356C294 356 322 326 322 290V240" stroke="#0d9488" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Stethoscope earpieces -->
+  <circle cx="190" cy="236" r="14" fill="#0f2a44"/>
+  <circle cx="322" cy="236" r="14" fill="#0f2a44"/>
+  <!-- Chest piece cord -->
+  <path d="M256 356V380" stroke="#0d9488" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="256" cy="386" r="18" fill="#0f2a44"/>
+  <!-- Plus badge in top right -->
+  <circle cx="380" cy="130" r="44" fill="#0f2a44" stroke="#ffffff" stroke-width="8"/>
+  <path d="M380 110V150M360 130H400" stroke="#5eead4" stroke-width="10" stroke-linecap="round"/>
+</svg>

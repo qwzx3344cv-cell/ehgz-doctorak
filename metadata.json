@@ -1,0 +1,6 @@
+{
+  "name": "احجز عند دكتورك - Ehgz 3nd Doctorak",
+  "description": "منصة احجز عند دكتورك لحجز مواعيد الأطباء ومعامل التحاليل الطبية بسهولة ومعرفة الأسعار مسبقاً مع دعم تثبيت تطبيق الويب PWA ولوحة إدارة متكاملة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

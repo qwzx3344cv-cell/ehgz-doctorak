@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    // Doctors collection
+    match /doctors/{doctorId} {
+      allow read: if true;
+      allow create: if isValidId(doctorId) &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 100 &&
+        request.resource.data.phone1 is string && request.resource.data.phone1.size() <= 30 &&
+        request.resource.data.price is number;
+      allow update, delete: if isValidId(doctorId);
+    }
+
+    // Labs collection
+    match /labs/{labId} {
+      allow read: if true;
+      allow create: if isValidId(labId) &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 100 &&
+        request.resource.data.phone is string && request.resource.data.phone.size() <= 30 &&
+        request.resource.data.startingPrice is number;
+      allow update, delete: if isValidId(labId);
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow create: if isValidId(bookingId) &&
+        request.resource.data.patientName is string && request.resource.data.patientName.size() <= 100 &&
+        request.resource.data.patientPhone is string && request.resource.data.patientPhone.size() <= 30;
+      allow update, delete: if isValidId(bookingId);
+    }
+
+    // Notifications collection (FCM / Realtime Push alerts)
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create: if isValidId(notificationId) &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 150 &&
+        request.resource.data.body is string && request.resource.data.body.size() <= 500;
+      allow update, delete: if isValidId(notificationId);
+    }
+
+    // Push Subscriptions collection (Registered devices for Push Notifications)
+    match /push_subscriptions/{subscriptionId} {
+      allow read: if true;
+      allow create: if isValidId(subscriptionId) &&
+        request.resource.data.role is string;
+      allow update, delete: if isValidId(subscriptionId);
+    }
+
+    // Reviews & Ratings collection
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isValidId(reviewId) &&
+        request.resource.data.providerId is string &&
+        request.resource.data.patientName is string &&
+        request.resource.data.rating is number &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        request.resource.data.comment is string;
+      allow update, delete: if isValidId(reviewId);
+    }
+
+    // E-Prescriptions collection
+    match /prescriptions/{prescriptionId} {
+      allow read: if true;
+      allow create: if isValidId(prescriptionId) &&
+        request.resource.data.patientName is string &&
+        request.resource.data.patientPhone is string &&
+        request.resource.data.doctorName is string &&
+        request.resource.data.diagnosis is string;
+      allow update, delete: if isValidId(prescriptionId);
+    }
+
+    // Medical Records & Attachments collection
+    match /medical_records/{recordId} {
+      allow read: if true;
+      allow create: if isValidId(recordId) &&
+        request.resource.data.patientPhone is string &&
+        request.resource.data.title is string &&
+        request.resource.data.fileUrl is string;
+      allow update, delete: if isValidId(recordId);
+    }
+
+    // Platform Settings (Commission toggle, global configurations)
+    match /settings/{settingId} {
+      allow read, write: if isValidId(settingId);
+    }
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Default deny for unmapped paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
