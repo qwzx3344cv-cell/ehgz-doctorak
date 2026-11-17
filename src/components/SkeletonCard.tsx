@@ -7,17 +7,8 @@ interface SkeletonCardProps {
 export const SkeletonCard: React.FC<SkeletonCardProps> = ({ type = 'doctor' }) => {
   return (
     <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col transition-all">
-      {/* Top Header Placeholder */}
-      <div className="relative bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800/80 dark:via-slate-800/50 dark:to-slate-800/80 p-4 border-b border-slate-200/60 dark:border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-slate-200 dark:bg-slate-700 animate-shimmer" />
-          <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 animate-shimmer hidden sm:block" />
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-20 h-6 rounded-full bg-slate-200 dark:bg-slate-700 animate-shimmer" />
-          <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 animate-shimmer" />
-        </div>
-      </div>
+      {/* Full-Width Ad Image Placeholder */}
+      <div className="w-full h-56 bg-slate-100 dark:bg-slate-800 border-b border-slate-200/60 dark:border-slate-800 animate-shimmer" />
 
       {/* Body Placeholder */}
       <div className="p-5 flex-1 flex flex-col justify-between space-y-4">

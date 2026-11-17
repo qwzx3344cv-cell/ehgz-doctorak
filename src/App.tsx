@@ -435,11 +435,15 @@ export default function App() {
   };
 
   const handleRegisterLab = async (newLab: Lab) => {
-    setLabs((prev) => [newLab, ...prev]);
     try {
       await saveLabToFirestore(newLab);
+      setLabs((prev) => {
+        if (prev.some((l) => l.id === newLab.id)) return prev;
+        return [newLab, ...prev];
+      });
     } catch (e) {
       console.error('Failed to save lab to Firestore:', e);
+      throw e;
     }
   };
 

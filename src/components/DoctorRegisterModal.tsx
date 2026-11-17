@@ -427,30 +427,37 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
                 <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة الطبيب الشخصية</span>
                 {doctorPhotoPreview ? (
                   <div className="space-y-2">
-                    <div className="relative w-full h-36 rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-slate-100 dark:bg-slate-900">
-                      <img src={doctorPhotoPreview} alt="معاينة صورة الطبيب" className="w-full h-full object-cover object-top" />
-                      <button
-                        type="button"
-                        onClick={clearDoctorPhoto}
-                        className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md cursor-pointer"
-                        title="حذف الصورة"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="absolute bottom-1.5 left-1.5 bg-emerald-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    <div className="w-full rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-white">
+                      <img
+                        src={doctorPhotoPreview}
+                        alt="معاينة صورة الطبيب"
+                        className="w-full h-auto max-h-56 object-contain block mx-auto"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                         تم اختيار الصورة ✓
                       </span>
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
+                          <Upload className="w-3 h-3" />
+                          <span>تغيير</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleSelectPhoto(e, setDoctorPhotoFile, setDoctorPhotoPreview)}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={clearDoctorPhoto}
+                          className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                        >
+                          حذف
+                        </button>
+                      </div>
                     </div>
-                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
-                      <Upload className="w-3 h-3" />
-                      <span>تغيير الصورة</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleSelectPhoto(e, setDoctorPhotoFile, setDoctorPhotoPreview)}
-                        className="hidden"
-                      />
-                    </label>
                   </div>
                 ) : (
                   <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-5">
@@ -458,7 +465,7 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
                       <Upload className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-bold text-teal-700 dark:text-teal-400">اختر صورة الطبيب</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر معاينة فورية)</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر كاملة وبجودة عالية)</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -471,41 +478,48 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
 
               {/* Clinic Photo */}
               <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-3 text-center hover:border-teal-500 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
-                <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة العيادة / المدخل</span>
+                <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة العيادة / الإعلان</span>
                 {clinicPhotoPreview ? (
                   <div className="space-y-2">
-                    <div className="relative w-full h-36 rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-slate-100 dark:bg-slate-900">
-                      <img src={clinicPhotoPreview} alt="معاينة صورة العيادة" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={clearClinicPhoto}
-                        className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md cursor-pointer"
-                        title="حذف الصورة"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="absolute bottom-1.5 left-1.5 bg-emerald-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    <div className="w-full rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-white">
+                      <img
+                        src={clinicPhotoPreview}
+                        alt="معاينة صورة العيادة"
+                        className="w-full h-auto max-h-56 object-contain block mx-auto"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                         تم اختيار الصورة ✓
                       </span>
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
+                          <ImageIcon className="w-3 h-3" />
+                          <span>تغيير</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleSelectPhoto(e, setClinicPhotoFile, setClinicPhotoPreview)}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={clearClinicPhoto}
+                          className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                        >
+                          حذف
+                        </button>
+                      </div>
                     </div>
-                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
-                      <ImageIcon className="w-3 h-3" />
-                      <span>تغيير الصورة</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleSelectPhoto(e, setClinicPhotoFile, setClinicPhotoPreview)}
-                        className="hidden"
-                      />
-                    </label>
                   </div>
                 ) : (
                   <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-5">
                     <div className="w-11 h-11 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
                       <ImageIcon className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-bold text-teal-700 dark:text-teal-400">اختر صورة العيادة</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر معاينة فورية)</span>
+                    <span className="text-xs font-bold text-teal-700 dark:text-teal-400">اختر صورة العيادة / الإعلان</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر كاملة وبجودة عالية)</span>
                     <input
                       type="file"
                       accept="image/*"

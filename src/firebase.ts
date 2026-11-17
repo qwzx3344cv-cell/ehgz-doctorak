@@ -40,6 +40,7 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 export const DEFAULT_DOCTOR_IMAGE_URL = '/assets/default-doctor.jpg';
+export const DEFAULT_LAB_IMAGE_URL = '/assets/default-lab.jpg';
 
 // Sanitize image fields so literal placeholder names like "clinic_image" are never treated as URLs
 export function sanitizeDoctorImageUrl(val?: unknown): string {
@@ -49,6 +50,7 @@ export function sanitizeDoctorImageUrl(val?: unknown): string {
     !trimmed ||
     trimmed === 'clinic_image' ||
     trimmed === 'doctor_image' ||
+    trimmed === 'lab_image' ||
     trimmed === 'undefined' ||
     trimmed === 'null'
   ) {
@@ -57,92 +59,159 @@ export function sanitizeDoctorImageUrl(val?: unknown): string {
   return trimmed;
 }
 
-// Compress image using canvas for fast Firebase Storage upload (and safe fallback)
-async function compressImageFile(
-  file: File,
-  maxDim = 1080,
-  quality = 0.82
-): Promise<{ blob: Blob; fallbackDataUrl: string }> {
+export const sanitizeProviderImageUrl = sanitizeDoctorImageUrl;
+
+// Process image while preserving sharp high-resolution quality for ad flyers & text readability
+async function prepareImageForUpload(
+  file: File
+): Promise<{ uploadBlob: Blob; contentType: string; ext: string; fallbackDataUrl: string }> {
+  const isDirectWebImage =
+    file.size <= 4 * 1024 * 1024 &&
+    (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/webp');
+
+  const rawExt =
+    file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+
   return new Promise((resolve) => {
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
 
     img.onload = () => {
       try {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const ratio = Math.min(maxDim / width, maxDim / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
+        const origW = img.naturalWidth || img.width;
+        const origH = img.naturalHeight || img.height;
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          URL.revokeObjectURL(objectUrl);
-          resolve({ blob: file, fallbackDataUrl: '' });
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Compact fallback data URL (max 600px) in case Storage bucket isn't writable
-        let fbWidth = width;
-        let fbHeight = height;
-        if (fbWidth > 600 || fbHeight > 600) {
-          const fbRatio = Math.min(600 / fbWidth, 600 / fbHeight);
-          fbWidth = Math.round(fbWidth * fbRatio);
-          fbHeight = Math.round(fbHeight * fbRatio);
-        }
-        const fbCanvas = document.createElement('canvas');
-        fbCanvas.width = fbWidth;
-        fbCanvas.height = fbHeight;
-        const fbCtx = fbCanvas.getContext('2d');
-        fbCtx?.drawImage(img, 0, 0, fbWidth, fbHeight);
-        const fallbackDataUrl = fbCanvas.toDataURL('image/jpeg', 0.72);
-
-        canvas.toBlob(
-          (blob) => {
-            URL.revokeObjectURL(objectUrl);
-            resolve({
-              blob: blob || file,
-              fallbackDataUrl
+        // 1. Storage upload blob: keep original crisp file if <= 4MB, else resize cleanly up to 2400px
+        const buildHighResBlob = (): Promise<{ blob: Blob; contentType: string; ext: string }> => {
+          if (isDirectWebImage) {
+            return Promise.resolve({
+              blob: file,
+              contentType: file.type || 'image/jpeg',
+              ext: rawExt
             });
-          },
-          'image/jpeg',
-          quality
-        );
+          }
+
+          const maxStorageDim = 2400;
+          let sw = origW;
+          let sh = origH;
+          if (sw > maxStorageDim || sh > maxStorageDim) {
+            const ratio = Math.min(maxStorageDim / sw, maxStorageDim / sh);
+            sw = Math.round(sw * ratio);
+            sh = Math.round(sh * ratio);
+          }
+
+          const sCanvas = document.createElement('canvas');
+          sCanvas.width = sw;
+          sCanvas.height = sh;
+          const sCtx = sCanvas.getContext('2d');
+          if (!sCtx) {
+            return Promise.resolve({
+              blob: file,
+              contentType: file.type || 'image/jpeg',
+              ext: rawExt
+            });
+          }
+          sCtx.imageSmoothingEnabled = true;
+          sCtx.imageSmoothingQuality = 'high';
+          sCtx.drawImage(img, 0, 0, sw, sh);
+
+          return new Promise((resBlob) => {
+            sCanvas.toBlob(
+              (blob) => {
+                resBlob({
+                  blob: blob || file,
+                  contentType: blob ? 'image/jpeg' : file.type || 'image/jpeg',
+                  ext: blob ? 'jpg' : rawExt
+                });
+              },
+              'image/jpeg',
+              0.94
+            );
+          });
+        };
+
+        // 2. Sharp fallback data URL (only used if Storage fails): up to 1440px, progressive quality <= 360KB
+        const buildSharpFallbackDataUrl = (): string => {
+          const attempts: Array<{ maxDim: number; quality: number; mime: string }> = [
+            { maxDim: 1440, quality: 0.9, mime: 'image/webp' },
+            { maxDim: 1440, quality: 0.85, mime: 'image/jpeg' },
+            { maxDim: 1280, quality: 0.8, mime: 'image/jpeg' },
+            { maxDim: 1080, quality: 0.74, mime: 'image/jpeg' }
+          ];
+
+          for (const attempt of attempts) {
+            let fw = origW;
+            let fh = origH;
+            if (fw > attempt.maxDim || fh > attempt.maxDim) {
+              const r = Math.min(attempt.maxDim / fw, attempt.maxDim / fh);
+              fw = Math.round(fw * r);
+              fh = Math.round(fh * r);
+            }
+            const fbCanvas = document.createElement('canvas');
+            fbCanvas.width = fw;
+            fbCanvas.height = fh;
+            const fbCtx = fbCanvas.getContext('2d');
+            if (!fbCtx) continue;
+            fbCtx.imageSmoothingEnabled = true;
+            fbCtx.imageSmoothingQuality = 'high';
+            fbCtx.drawImage(img, 0, 0, fw, fh);
+            const dataUrl = fbCanvas.toDataURL(attempt.mime, attempt.quality);
+            if (dataUrl && dataUrl.length <= 360000) {
+              return dataUrl;
+            }
+          }
+          return '';
+        };
+
+        const fallbackDataUrl = buildSharpFallbackDataUrl();
+        buildHighResBlob().then(({ blob, contentType, ext }) => {
+          URL.revokeObjectURL(objectUrl);
+          resolve({
+            uploadBlob: blob,
+            contentType,
+            ext,
+            fallbackDataUrl
+          });
+        });
       } catch {
         URL.revokeObjectURL(objectUrl);
-        resolve({ blob: file, fallbackDataUrl: '' });
+        resolve({
+          uploadBlob: file,
+          contentType: file.type || 'image/jpeg',
+          ext: rawExt,
+          fallbackDataUrl: ''
+        });
       }
     };
 
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      resolve({ blob: file, fallbackDataUrl: '' });
+      resolve({
+        uploadBlob: file,
+        contentType: file.type || 'image/jpeg',
+        ext: rawExt,
+        fallbackDataUrl: ''
+      });
     };
 
     img.src = objectUrl;
   });
 }
 
-// Upload doctor or clinic photo to Firebase Storage and return download URL
-export async function uploadDoctorImageToStorage(
-  doctorId: string,
-  kind: 'doctor' | 'clinic',
+async function uploadProviderImageToStorage(
+  folder: 'doctors' | 'labs',
+  providerId: string,
+  kind: 'doctor' | 'clinic' | 'lab',
   file: File
 ): Promise<string> {
-  const { blob, fallbackDataUrl } = await compressImageFile(file);
-  const filePath = `doctors/${doctorId}/${kind}_${Date.now()}.jpg`;
+  const { uploadBlob, contentType, ext, fallbackDataUrl } = await prepareImageForUpload(file);
+  const filePath = `${folder}/${providerId}/${kind}_${Date.now()}.${ext}`;
   const storageRef = ref(storage, filePath);
 
   try {
     const uploadTask = (async () => {
-      const snapshot = await uploadBytes(storageRef, blob, {
-        contentType: blob.type || 'image/jpeg'
+      const snapshot = await uploadBytes(storageRef, uploadBlob, {
+        contentType: contentType || 'image/jpeg'
       });
       return await getDownloadURL(snapshot.ref);
     })();
@@ -160,6 +229,23 @@ export async function uploadDoctorImageToStorage(
     }
     throw err;
   }
+}
+
+// Upload doctor or clinic photo to Firebase Storage and return download URL
+export async function uploadDoctorImageToStorage(
+  doctorId: string,
+  kind: 'doctor' | 'clinic',
+  file: File
+): Promise<string> {
+  return uploadProviderImageToStorage('doctors', doctorId, kind, file);
+}
+
+// Upload lab ad/banner photo to Firebase Storage and return download URL
+export async function uploadLabImageToStorage(
+  labId: string,
+  file: File
+): Promise<string> {
+  return uploadProviderImageToStorage('labs', labId, 'lab', file);
 }
 
 // Error Handling per Skill requirements
@@ -371,7 +457,7 @@ export function subscribeLabs(
           governorate: data.governorate || undefined,
           city: data.city || undefined,
           center: data.center || data.city || undefined,
-          labPhoto: data.labPhoto || undefined,
+          labPhoto: sanitizeProviderImageUrl(data.labPhoto) || undefined,
           tests: Array.isArray(data.tests) ? data.tests : [],
           startingPrice: Number(data.startingPrice || 0),
           workingHours: data.workingHours || undefined,
@@ -397,6 +483,7 @@ export async function saveLabToFirestore(lab: Lab): Promise<void> {
   const path = 'labs';
   try {
     const docRef = doc(db, path, lab.id);
+    const cleanLabPhoto = sanitizeProviderImageUrl(lab.labPhoto);
     const dataToSave = {
       name: lab.name,
       phone: lab.phone,
@@ -404,7 +491,7 @@ export async function saveLabToFirestore(lab: Lab): Promise<void> {
       governorate: lab.governorate || '',
       city: lab.city || lab.center || '',
       center: lab.center || lab.city || '',
-      labPhoto: lab.labPhoto || '',
+      labPhoto: cleanLabPhoto || DEFAULT_LAB_IMAGE_URL,
       tests: lab.tests || [],
       startingPrice: Number(lab.startingPrice),
       workingHours: lab.workingHours || '',

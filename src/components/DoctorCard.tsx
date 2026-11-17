@@ -57,149 +57,145 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({
     );
 
   const customPhoto =
-    (isCustomPhoto(doctor.doctorPhoto) ? doctor.doctorPhoto : undefined) ||
     (isCustomPhoto(doctor.clinic_image) ? doctor.clinic_image : undefined) ||
+    (isCustomPhoto(doctor.doctorPhoto) ? doctor.doctorPhoto : undefined) ||
     (isCustomPhoto(doctor.clinicPhoto) ? doctor.clinicPhoto : undefined);
 
   const photoSrc = !imgError && customPhoto ? customPhoto : defaultDoctorPortrait;
 
   return (
-    <div className="group relative bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:-translate-y-1 hover:border-teal-400 dark:hover:border-teal-600 transition-all duration-300 flex flex-col justify-between overflow-hidden min-h-[500px] sm:min-h-[530px]">
+    <div className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-teal-400 dark:hover:border-teal-600 transition-all duration-300 flex flex-col overflow-hidden">
       
-      {/* Full-bleed Background Doctor Photo (Top to Bottom) */}
-      <img
-        src={photoSrc}
-        alt={doctor.name}
-        referrerPolicy="no-referrer"
-        onError={() => {
-          if (!imgError) setImgError(true);
-        }}
-        className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105 select-none"
-      />
-
-      {/* Subtle Gradient Scrim over the background photo for contrast */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/10 to-black/75 pointer-events-none" />
-
-      {/* Top Overlay Bar: Specialty Badge + Verified Status + Rating */}
-      <div className="relative z-10 p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-2">
-        
-        {/* Right side: Specialty + Stethoscope */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/90 dark:bg-slate-950/80 backdrop-blur-md border border-white/60 dark:border-slate-700/70 shadow-sm max-w-[65%]">
-          <Stethoscope className="w-4 h-4 text-[#0d9488] dark:text-teal-400 shrink-0" />
-          <span className="text-xs font-extrabold text-[#0f2a44] dark:text-teal-300 truncate">
-            {doctor.specialty}
-          </span>
-        </div>
-
-        {/* Left side: Verified/Demo + Star Rating */}
-        <div className="flex items-center gap-1.5">
-          {doctor.isDemo ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-white/90 dark:bg-slate-950/80 backdrop-blur-md text-slate-700 dark:text-slate-200 border border-white/60 dark:border-slate-700/70 shadow-sm">
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>مثال توضيحي</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50/90 dark:bg-emerald-950/85 backdrop-blur-md text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80 shadow-sm">
-              <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-              <span>طبيب موثق</span>
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={() => onViewReviews && onViewReviews(doctor)}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-950/80 backdrop-blur-md hover:bg-amber-50 dark:hover:bg-slate-900 border border-white/60 dark:border-slate-700/70 text-amber-900 dark:text-amber-200 transition-all active:scale-95 text-xs font-bold shadow-sm group/rating cursor-pointer"
-            title="عرض تقييمات المرضى وآرائهم"
-          >
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 group-hover/rating:scale-125 transition-transform duration-200" />
-            <span className="font-black text-[#0f2a44] dark:text-white">{avgRating || '5.0'}</span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-300 font-semibold hidden xs:inline">
-              ({totalReviews > 0 ? `${totalReviews}` : 'جديد'})
-            </span>
-          </button>
-        </div>
-
+      {/* Full Ad / Doctor Image: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
+      <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
+        <img
+          src={photoSrc}
+          alt={doctor.name}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
+          onError={() => {
+            if (!imgError) setImgError(true);
+          }}
+          className="w-full h-auto object-contain block select-none"
+        />
       </div>
 
-      {/* Middle Clear Portrait Showcase Spacer */}
-      <div className="relative z-10 flex-1 min-h-[175px] sm:min-h-[195px] pointer-events-none" />
-
-      {/* Bottom Translucent Content Panel Over Photo */}
-      <div className="relative z-10 m-3 sm:m-3.5 p-4 rounded-2xl bg-white/90 dark:bg-slate-950/85 backdrop-blur-md border border-white/70 dark:border-slate-800/90 shadow-xl space-y-3">
+      {/* White Card Body Below Image with All Doctor Information */}
+      <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 flex-1 flex flex-col justify-between space-y-3.5">
         
-        {/* Doctor Name */}
-        <div>
-          <h3 className="font-extrabold text-lg sm:text-xl text-[#0f2a44] dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-300 transition-colors">
-            {doctor.name}
-          </h3>
-
-          {/* Governorate / Center Badge */}
-          {(doctor.governorate || doctor.center) && (
-            <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-50/90 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 text-[11px] font-bold border border-teal-200/70 dark:border-teal-800/60">
-              <MapPin className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
-              <span>
-                {doctor.governorate ? `${doctor.governorate}` : ''}
-                {doctor.governorate && doctor.center ? ' • ' : ''}
-                {doctor.center ? `${doctor.center}` : ''}
+        <div className="space-y-2.5">
+          {/* Top Metadata Row: Specialty + Verified Status + Star Rating */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800/50 max-w-[65%]">
+              <Stethoscope className="w-3.5 h-3.5 text-[#0d9488] dark:text-teal-400 shrink-0" />
+              <span className="text-xs font-extrabold text-[#0d9488] dark:text-teal-300 truncate">
+                {doctor.specialty}
               </span>
             </div>
-          )}
-        </div>
 
-        {/* Address + Google Maps Directions */}
-        <div className="flex items-start justify-between gap-2 text-xs text-slate-700 dark:text-slate-200">
-          <div className="flex items-start gap-1.5 flex-1 min-w-0">
-            <MapPin className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
-            <span className="line-clamp-2 leading-relaxed font-medium">{doctor.address}</span>
-          </div>
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50/90 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 text-[11px] font-bold border border-blue-200 dark:border-blue-800 shrink-0 transition-all duration-200 shadow-2xs group/map active:scale-95"
-            title="فتح الموقع ومسار الوصول في خرائط جوجل"
-          >
-            <Navigation className="w-3 h-3 text-blue-600 dark:text-blue-400 group-hover/map:rotate-45 transition-transform duration-200" />
-            <span>الاتجاهات</span>
-          </a>
-        </div>
+            <div className="flex items-center gap-1.5">
+              {doctor.isDemo ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span>مثال توضيحي</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  <span>طبيب موثق</span>
+                </span>
+              )}
 
-        {/* Phone & Working Hours Row */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-200 bg-slate-100/85 dark:bg-slate-900/80 px-2.5 py-2 rounded-xl border border-slate-200/70 dark:border-slate-800">
-          <div className="flex items-center gap-1.5">
-            <Phone className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
-            {doctor.phone1 ? (
-              <a href={`tel:${doctor.phone1}`} className="font-mono text-[#0f2a44] dark:text-slate-100 font-bold hover:text-teal-600 dark:hover:text-teal-400 transition-colors" dir="ltr">
-                {doctor.phone1}
-              </a>
-            ) : (
-              <span className="text-slate-500 dark:text-slate-400 text-[11px]">يُضاف رقم التواصل عند التسجيل</span>
-            )}
+              <button
+                type="button"
+                onClick={() => onViewReviews && onViewReviews(doctor)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100/80 dark:hover:bg-amber-900/60 border border-amber-200/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 transition-all active:scale-95 text-xs font-bold shadow-2xs group/rating cursor-pointer"
+                title="عرض تقييمات المرضى وآرائهم"
+              >
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 group-hover/rating:scale-125 transition-transform duration-200" />
+                <span className="font-black text-[#0f2a44] dark:text-white">{avgRating || '5.0'}</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-300 font-semibold hidden xs:inline">
+                  ({totalReviews > 0 ? `${totalReviews}` : 'جديد'})
+                </span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {doctor.workingHours && (
-              <div className="flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300">
-                <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
-                <span className="truncate max-w-[130px]">{doctor.workingHours}</span>
+
+          {/* Doctor Name */}
+          <div>
+            <h3 className="font-extrabold text-lg sm:text-xl text-[#0f2a44] dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-300 transition-colors">
+              {doctor.name}
+            </h3>
+
+            {/* Governorate / Center Badge */}
+            {(doctor.governorate || doctor.center) && (
+              <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-[11px] font-bold border border-teal-100 dark:border-teal-800/50">
+                <MapPin className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span>
+                  {doctor.governorate ? `${doctor.governorate}` : ''}
+                  {doctor.governorate && doctor.center ? ' • ' : ''}
+                  {doctor.center ? `${doctor.center}` : ''}
+                </span>
               </div>
             )}
-            {doctor.phone1 && (
-              <a href={`tel:${doctor.phone1}`} className="text-[10px] font-bold text-teal-800 dark:text-teal-200 bg-teal-100/90 dark:bg-teal-900/60 px-2 py-0.5 rounded-md hover:bg-teal-200 dark:hover:bg-teal-800 transition-colors">
-                اتصال
-              </a>
-            )}
+          </div>
+
+          {/* Address + Google Maps Directions */}
+          <div className="flex items-start justify-between gap-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+            <div className="flex items-start gap-1.5 flex-1 min-w-0">
+              <MapPin className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+              <span className="line-clamp-2 leading-relaxed font-medium">{doctor.address}</span>
+            </div>
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[11px] font-bold border border-blue-200 dark:border-blue-800 shrink-0 transition-all duration-200 shadow-2xs group/map active:scale-95"
+              title="فتح الموقع ومسار الوصول في خرائط جوجل"
+            >
+              <Navigation className="w-3 h-3 text-blue-600 dark:text-blue-400 group-hover/map:rotate-45 transition-transform duration-200" />
+              <span>الاتجاهات</span>
+            </a>
+          </div>
+
+          {/* Phone & Working Hours Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/70 px-3 py-2 rounded-xl border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+              {doctor.phone1 ? (
+                <a href={`tel:${doctor.phone1}`} className="font-mono text-[#0f2a44] dark:text-slate-100 font-bold hover:text-teal-600 dark:hover:text-teal-400 transition-colors" dir="ltr">
+                  {doctor.phone1}
+                </a>
+              ) : (
+                <span className="text-slate-400 dark:text-slate-500 text-[11px]">يُضاف رقم التواصل عند التسجيل</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {doctor.workingHours && (
+                <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-300">
+                  <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <span className="truncate max-w-[130px]">{doctor.workingHours}</span>
+                </div>
+              )}
+              {doctor.phone1 && (
+                <a href={`tel:${doctor.phone1}`} className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/50 px-2 py-0.5 rounded-md hover:bg-teal-100 dark:hover:bg-teal-900 transition-colors">
+                  اتصال
+                </a>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Card Footer: Price + Book Button */}
-        <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
           
           {/* Price */}
           <div className="flex flex-col">
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">قيمة الكشف</span>
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">قيمة الكشف</span>
             <div className="flex items-baseline gap-1 text-[#0f2a44] dark:text-white font-black text-lg sm:text-xl">
               <span>{doctor.price}</span>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">جنيه</span>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">جنيه</span>
             </div>
           </div>
 
@@ -209,7 +205,7 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({
               <button
                 type="button"
                 onClick={onAddDataClick}
-                className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs border border-slate-300 dark:border-slate-700 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-200 dark:border-slate-700 transition-all shadow-2xs active:scale-95 cursor-pointer"
                 title="أضف بيانات عيادتك الحقيقية"
               >
                 أضف بياناتك

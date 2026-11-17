@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   FlaskConical, 
@@ -11,15 +11,17 @@ import {
   AlertCircle,
   Clock,
   TestTube2,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 import { Lab, LabTestItem } from '../types';
 import { EGYPT_GOVERNORATES, getCentersForGovernorate } from '../data/egyptLocations';
+import { DEFAULT_LAB_IMAGE_URL, uploadLabImageToStorage } from '../firebase';
 
 interface LabRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRegisterLab: (lab: Lab) => void;
+  onRegisterLab: (lab: Lab) => void | Promise<void>;
 }
 
 export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
@@ -34,8 +36,28 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
   const [address, setAddress] = useState('');
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   const [workingHours, setWorkingHours] = useState('يومياً من ٨ ص حتى ١١ م');
-  const [labPhoto, setLabPhoto] = useState<string>('');
+  const [labPhotoFile, setLabPhotoFile] = useState<File | null>(null);
+  const [labPhotoPreview, setLabPhotoPreview] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  // Dynamic list of tests: name + price
+  const [tests, setTests] = useState<LabTestItem[]>([
+    { id: 't-init-1', name: 'صورة دم كاملة (CBC)', price: 140 },
+    { id: 't-init-2', name: 'سكر تراكمي (HbA1c)', price: 120 },
+    { id: 't-init-3', name: 'وظائف كبد (SGOT, SGPT)', price: 180 }
+  ]);
+  const [newTestName, setNewTestName] = useState('');
+  const [newTestPrice, setNewTestPrice] = useState<number | ''>('');
+
+  useEffect(() => {
+    return () => {
+      if (labPhotoPreview && labPhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(labPhotoPreview);
+      }
+    };
+  }, [labPhotoPreview]);
 
   // Available centers for current selected governorate
   const availableCenters = getCentersForGovernorate(governorate);
@@ -48,24 +70,19 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
     setCenter(newCenters[0] || '');
   };
 
-  // Dynamic list of tests: name + price
-  const [tests, setTests] = useState<LabTestItem[]>([
-    { id: 't-init-1', name: 'صورة دم كاملة (CBC)', price: 140 },
-    { id: 't-init-2', name: 'سكر تراكمي (HbA1c)', price: 120 },
-    { id: 't-init-3', name: 'وظائف كبد (SGOT, SGPT)', price: 180 }
-  ]);
-  const [newTestName, setNewTestName] = useState('');
-  const [newTestPrice, setNewTestPrice] = useState<number | ''>('');
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLabPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setLabPhotoFile(file);
+      const previewUrl = URL.createObjectURL(file);
+      setLabPhotoPreview(previewUrl);
     }
+    e.target.value = '';
+  };
+
+  const clearLabPhoto = () => {
+    setLabPhotoFile(null);
+    setLabPhotoPreview('');
   };
 
   const handleAddTest = () => {
@@ -87,35 +104,52 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
     setTests(tests.filter((t) => t.id !== id));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!name.trim() || !phone.trim() || !address.trim()) {
       alert('من فضلك أكمل الحقول المطلوبة');
       return;
     }
 
-    const minPrice = tests.length > 0 ? Math.min(...tests.map((t) => t.price)) : 150;
+    setIsSubmitting(true);
+    setSubmitError('');
 
-    const newLab: Lab = {
-      id: 'lab-' + Date.now(),
-      name: name.trim().startsWith('معمل') ? name.trim() : `معمل ${name.trim()}`,
-      phone: phone.trim(),
-      governorate,
-      center,
-      city: center,
-      address: address.trim(),
-      googleMapsUrl: googleMapsUrl.trim() || undefined,
-      startingPrice: minPrice,
-      tests: tests.length > 0 ? tests : [{ id: 'test-def', name: 'فحص عام', price: 150 }],
-      labPhoto: labPhoto || undefined,
-      workingHours: workingHours.trim() || undefined,
-      isDemo: false,
-      status: 'pending', // Pending admin approval
-      createdAt: new Date().toISOString()
-    };
+    try {
+      const labId = 'lab-' + Date.now();
+      const uploadedLabPhoto = labPhotoFile
+        ? await uploadLabImageToStorage(labId, labPhotoFile)
+        : DEFAULT_LAB_IMAGE_URL;
 
-    onRegisterLab(newLab);
-    setSubmitted(true);
+      const minPrice = tests.length > 0 ? Math.min(...tests.map((t) => t.price)) : 150;
+
+      const newLab: Lab = {
+        id: labId,
+        name: name.trim().startsWith('معمل') ? name.trim() : `معمل ${name.trim()}`,
+        phone: phone.trim(),
+        governorate,
+        center,
+        city: center,
+        address: address.trim(),
+        googleMapsUrl: googleMapsUrl.trim() || undefined,
+        startingPrice: minPrice,
+        tests: tests.length > 0 ? tests : [{ id: 'test-def', name: 'فحص عام', price: 150 }],
+        labPhoto: uploadedLabPhoto,
+        workingHours: workingHours.trim() || undefined,
+        isDemo: false,
+        status: 'pending', // Pending admin approval
+        createdAt: new Date().toISOString()
+      };
+
+      await onRegisterLab(newLab);
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Error submitting lab registration:', err);
+      setSubmitError('حدث خطأ أثناء رفع الصورة أو حفظ طلب المعمل، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -391,25 +425,48 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
 
             {/* Lab Photo Upload */}
             <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 text-center hover:border-teal-500 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
-              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة واجهة المعمل أو الشعار</span>
-              {labPhoto ? (
-                <div className="relative inline-block">
-                  <img src={labPhoto} alt="Lab" className="w-28 h-20 rounded-xl object-cover border-2 border-teal-500 mx-auto shadow-xs" />
-                  <button
-                    type="button"
-                    onClick={() => setLabPhoto('')}
-                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة إعلان المعمل / الواجهة</span>
+              {labPhotoPreview ? (
+                <div className="space-y-2">
+                  <div className="w-full rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-white">
+                    <img
+                      src={labPhotoPreview}
+                      alt="معاينة صورة المعمل"
+                      className="w-full h-auto max-h-60 object-contain block mx-auto"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 px-1">
+                    <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      تم اختيار الصورة ✓
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
+                        <Upload className="w-3 h-3" />
+                        <span>تغيير الصورة</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={clearLabPhoto}
+                        className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-2">
+                <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-3">
                   <div className="w-10 h-10 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
                     <Upload className="w-4 h-4" />
                   </div>
-                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">رفع صورة المعمل</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG</span>
+                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">رفع صورة إعلان المعمل</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر كاملة وبجودة عالية)</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -420,13 +477,28 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
               )}
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
             {/* Submit */}
             <div className="pt-2">
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-[#0d9488] hover:bg-teal-700 text-white font-extrabold text-sm sm:text-base shadow-md transition-all active:scale-[0.98] cursor-pointer"
+                disabled={isSubmitting}
+                className="w-full py-3.5 rounded-2xl bg-[#0d9488] hover:bg-teal-700 disabled:opacity-60 text-white font-extrabold text-sm sm:text-base shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
               >
-                إرسال طلب تسجيل المعمل
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>جاري رفع الصورة وحفظ طلب المعمل...</span>
+                  </>
+                ) : (
+                  <span>إرسال طلب تسجيل المعمل</span>
+                )}
               </button>
             </div>
 
