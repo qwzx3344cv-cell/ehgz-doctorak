@@ -422,11 +422,15 @@ export default function App() {
 
   // Registration handlers
   const handleRegisterDoctor = async (newDoc: Doctor) => {
-    setDoctors((prev) => [newDoc, ...prev]);
     try {
       await saveDoctorToFirestore(newDoc);
+      setDoctors((prev) => {
+        if (prev.some((d) => d.id === newDoc.id)) return prev;
+        return [newDoc, ...prev];
+      });
     } catch (e) {
       console.error('Failed to save doctor to Firestore:', e);
+      throw e;
     }
   };
 

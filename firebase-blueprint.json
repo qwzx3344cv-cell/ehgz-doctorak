@@ -15,6 +15,7 @@
         "center": { "type": "string", "maxLength": 50 },
         "price": { "type": "number" },
         "clinicPhoto": { "type": "string", "maxLength": 500000 },
+        "clinic_image": { "type": "string", "maxLength": 500000 },
         "doctorPhoto": { "type": "string", "maxLength": 500000 },
         "workingHours": { "type": "string", "maxLength": 150 },
         "status": { "type": "string", "enum": ["approved", "pending", "rejected", "blocked"] },

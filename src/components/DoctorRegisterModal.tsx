@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Stethoscope, 
@@ -11,16 +11,18 @@ import {
   CheckCircle2, 
   AlertCircle,
   Image as ImageIcon,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 import { SPECIALTIES } from '../constants';
 import { Doctor } from '../types';
 import { EGYPT_GOVERNORATES, getCentersForGovernorate } from '../data/egyptLocations';
+import { DEFAULT_DOCTOR_IMAGE_URL, uploadDoctorImageToStorage } from '../firebase';
 
 interface DoctorRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRegisterDoctor: (doctor: Doctor) => void;
+  onRegisterDoctor: (doctor: Doctor) => void | Promise<void>;
 }
 
 export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
@@ -38,9 +40,30 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   const [price, setPrice] = useState(250);
   const [workingHours, setWorkingHours] = useState('يومياً من ٥م إلى ٩م');
-  const [doctorPhoto, setDoctorPhoto] = useState<string>('');
-  const [clinicPhoto, setClinicPhoto] = useState<string>('');
+  const [doctorPhotoFile, setDoctorPhotoFile] = useState<File | null>(null);
+  const [doctorPhotoPreview, setDoctorPhotoPreview] = useState<string>('');
+  const [clinicPhotoFile, setClinicPhotoFile] = useState<File | null>(null);
+  const [clinicPhotoPreview, setClinicPhotoPreview] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  // Revoke object URLs on unmount/change to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (doctorPhotoPreview && doctorPhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(doctorPhotoPreview);
+      }
+    };
+  }, [doctorPhotoPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (clinicPhotoPreview && clinicPhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(clinicPhotoPreview);
+      }
+    };
+  }, [clinicPhotoPreview]);
 
   // Available centers for current selected governorate
   const availableCenters = getCentersForGovernorate(governorate);
@@ -53,49 +76,90 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
     setCenter(newCenters[0] || '');
   };
 
-  const handleFileUpload = (
+  const handleSelectPhoto = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (val: string) => void
+    setFile: (file: File | null) => void,
+    setPreview: (val: string) => void
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setter(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setFile(file);
+      const previewUrl = URL.createObjectURL(file);
+      setPreview(previewUrl);
     }
+    e.target.value = '';
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const clearDoctorPhoto = () => {
+    setDoctorPhotoFile(null);
+    setDoctorPhotoPreview('');
+  };
+
+  const clearClinicPhoto = () => {
+    setClinicPhotoFile(null);
+    setClinicPhotoPreview('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!name.trim() || !phone1.trim() || !address.trim() || !price) {
       alert('من فضلك أكمل الحقول المطلوبة');
       return;
     }
 
-    const newDoctor: Doctor = {
-      id: 'doc-' + Date.now(),
-      name: name.trim().startsWith('د.') ? name.trim() : `د. ${name.trim()}`,
-      specialty,
-      phone1: phone1.trim(),
-      phone2: phone2.trim() || undefined,
-      governorate,
-      center,
-      city: center,
-      address: address.trim(),
-      googleMapsUrl: googleMapsUrl.trim() || undefined,
-      price: Number(price),
-      workingHours: workingHours.trim() || undefined,
-      doctorPhoto: doctorPhoto || undefined,
-      clinicPhoto: clinicPhoto || undefined,
-      isDemo: false,
-      status: 'pending', // Pending admin approval
-      createdAt: new Date().toISOString()
-    };
+    setIsSubmitting(true);
+    setSubmitError('');
 
-    onRegisterDoctor(newDoctor);
-    setSubmitted(true);
+    try {
+      const doctorId = 'doc-' + Date.now();
+
+      // Upload selected photos to Firebase Storage (or use default if none chosen)
+      const [uploadedDoctorUrl, uploadedClinicUrl] = await Promise.all([
+        doctorPhotoFile
+          ? uploadDoctorImageToStorage(doctorId, 'doctor', doctorPhotoFile)
+          : Promise.resolve(DEFAULT_DOCTOR_IMAGE_URL),
+        clinicPhotoFile
+          ? uploadDoctorImageToStorage(doctorId, 'clinic', clinicPhotoFile)
+          : Promise.resolve(DEFAULT_DOCTOR_IMAGE_URL)
+      ]);
+
+      const resolvedClinicImage = clinicPhotoFile
+        ? uploadedClinicUrl
+        : doctorPhotoFile
+          ? uploadedDoctorUrl
+          : DEFAULT_DOCTOR_IMAGE_URL;
+
+      const newDoctor: Doctor = {
+        id: doctorId,
+        name: name.trim().startsWith('د.') ? name.trim() : `د. ${name.trim()}`,
+        specialty,
+        phone1: phone1.trim(),
+        phone2: phone2.trim() || undefined,
+        governorate,
+        center,
+        city: center,
+        address: address.trim(),
+        googleMapsUrl: googleMapsUrl.trim() || undefined,
+        price: Number(price),
+        workingHours: workingHours.trim() || undefined,
+        doctorPhoto: uploadedDoctorUrl,
+        clinicPhoto: uploadedClinicUrl,
+        clinic_image: resolvedClinicImage,
+        isDemo: false,
+        status: 'pending', // Pending admin approval
+        createdAt: new Date().toISOString()
+      };
+
+      await onRegisterDoctor(newDoctor);
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Error submitting doctor registration:', err);
+      setSubmitError('حدث خطأ أثناء رفع الصور أو حفظ الطلب، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -361,28 +425,44 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
               {/* Doctor Photo */}
               <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-3 text-center hover:border-teal-500 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
                 <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة الطبيب الشخصية</span>
-                {doctorPhoto ? (
-                  <div className="relative inline-block">
-                    <img src={doctorPhoto} alt="Doctor" className="w-20 h-20 rounded-full object-cover border-2 border-teal-500 mx-auto shadow-xs" />
-                    <button
-                      type="button"
-                      onClick={() => setDoctorPhoto('')}
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                {doctorPhotoPreview ? (
+                  <div className="space-y-2">
+                    <div className="relative w-full h-36 rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-slate-100 dark:bg-slate-900">
+                      <img src={doctorPhotoPreview} alt="معاينة صورة الطبيب" className="w-full h-full object-cover object-top" />
+                      <button
+                        type="button"
+                        onClick={clearDoctorPhoto}
+                        className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md cursor-pointer"
+                        title="حذف الصورة"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="absolute bottom-1.5 left-1.5 bg-emerald-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        تم اختيار الصورة ✓
+                      </span>
+                    </div>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
+                      <Upload className="w-3 h-3" />
+                      <span>تغيير الصورة</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleSelectPhoto(e, setDoctorPhotoFile, setDoctorPhotoPreview)}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
                 ) : (
-                  <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-3">
-                    <div className="w-10 h-10 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
-                      <Upload className="w-4 h-4" />
+                  <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-5">
+                    <div className="w-11 h-11 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                      <Upload className="w-5 h-5" />
                     </div>
-                    <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">رفع صورة الطبيب</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG</span>
+                    <span className="text-xs font-bold text-teal-700 dark:text-teal-400">اختر صورة الطبيب</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر معاينة فورية)</span>
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleFileUpload(e, setDoctorPhoto)}
+                      onChange={(e) => handleSelectPhoto(e, setDoctorPhotoFile, setDoctorPhotoPreview)}
                       className="hidden"
                     />
                   </label>
@@ -392,28 +472,44 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
               {/* Clinic Photo */}
               <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-3 text-center hover:border-teal-500 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
                 <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة العيادة / المدخل</span>
-                {clinicPhoto ? (
-                  <div className="relative inline-block">
-                    <img src={clinicPhoto} alt="Clinic" className="w-28 h-20 rounded-xl object-cover border-2 border-teal-500 mx-auto shadow-xs" />
-                    <button
-                      type="button"
-                      onClick={() => setClinicPhoto('')}
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                {clinicPhotoPreview ? (
+                  <div className="space-y-2">
+                    <div className="relative w-full h-36 rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-slate-100 dark:bg-slate-900">
+                      <img src={clinicPhotoPreview} alt="معاينة صورة العيادة" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={clearClinicPhoto}
+                        className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md cursor-pointer"
+                        title="حذف الصورة"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="absolute bottom-1.5 left-1.5 bg-emerald-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        تم اختيار الصورة ✓
+                      </span>
+                    </div>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline cursor-pointer">
+                      <ImageIcon className="w-3 h-3" />
+                      <span>تغيير الصورة</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleSelectPhoto(e, setClinicPhotoFile, setClinicPhotoPreview)}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
                 ) : (
-                  <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-3">
-                    <div className="w-10 h-10 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
-                      <ImageIcon className="w-4 h-4" />
+                  <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-5">
+                    <div className="w-11 h-11 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                      <ImageIcon className="w-5 h-5" />
                     </div>
-                    <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">رفع صورة العيادة</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG</span>
+                    <span className="text-xs font-bold text-teal-700 dark:text-teal-400">اختر صورة العيادة</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر معاينة فورية)</span>
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleFileUpload(e, setClinicPhoto)}
+                      onChange={(e) => handleSelectPhoto(e, setClinicPhotoFile, setClinicPhotoPreview)}
                       className="hidden"
                     />
                   </label>
@@ -422,13 +518,28 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
 
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
             {/* Submit Button */}
             <div className="pt-3">
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-[#0d9488] hover:bg-teal-700 text-white font-extrabold text-sm sm:text-base shadow-md transition-all active:scale-[0.98] cursor-pointer"
+                disabled={isSubmitting}
+                className="w-full py-3.5 rounded-2xl bg-[#0d9488] hover:bg-teal-700 disabled:opacity-60 text-white font-extrabold text-sm sm:text-base shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
               >
-                إرسال طلب تسجيل العيادة
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>جاري رفع الصور وحفظ طلب العيادة...</span>
+                  </>
+                ) : (
+                  <span>إرسال طلب تسجيل العيادة</span>
+                )}
               </button>
             </div>
 

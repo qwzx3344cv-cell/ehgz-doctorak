@@ -12,6 +12,7 @@ export interface Doctor {
   center?: string;
   price: number;
   clinicPhoto?: string;
+  clinic_image?: string;
   doctorPhoto?: string;
   workingHours?: string;
   isDemo?: boolean;

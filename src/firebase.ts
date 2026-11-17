@@ -11,6 +11,7 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported, Messaging } from 'firebase/messaging';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 import { 
   Doctor, 
@@ -36,6 +37,130 @@ const app = initializeApp(firebaseConfig);
 // CRITICAL: Must pass firestoreDatabaseId from firebase-applet-config.json
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+export const DEFAULT_DOCTOR_IMAGE_URL = '/assets/default-doctor.jpg';
+
+// Sanitize image fields so literal placeholder names like "clinic_image" are never treated as URLs
+export function sanitizeDoctorImageUrl(val?: unknown): string {
+  if (typeof val !== 'string') return '';
+  const trimmed = val.trim();
+  if (
+    !trimmed ||
+    trimmed === 'clinic_image' ||
+    trimmed === 'doctor_image' ||
+    trimmed === 'undefined' ||
+    trimmed === 'null'
+  ) {
+    return '';
+  }
+  return trimmed;
+}
+
+// Compress image using canvas for fast Firebase Storage upload (and safe fallback)
+async function compressImageFile(
+  file: File,
+  maxDim = 1080,
+  quality = 0.82
+): Promise<{ blob: Blob; fallbackDataUrl: string }> {
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          resolve({ blob: file, fallbackDataUrl: '' });
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compact fallback data URL (max 600px) in case Storage bucket isn't writable
+        let fbWidth = width;
+        let fbHeight = height;
+        if (fbWidth > 600 || fbHeight > 600) {
+          const fbRatio = Math.min(600 / fbWidth, 600 / fbHeight);
+          fbWidth = Math.round(fbWidth * fbRatio);
+          fbHeight = Math.round(fbHeight * fbRatio);
+        }
+        const fbCanvas = document.createElement('canvas');
+        fbCanvas.width = fbWidth;
+        fbCanvas.height = fbHeight;
+        const fbCtx = fbCanvas.getContext('2d');
+        fbCtx?.drawImage(img, 0, 0, fbWidth, fbHeight);
+        const fallbackDataUrl = fbCanvas.toDataURL('image/jpeg', 0.72);
+
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            resolve({
+              blob: blob || file,
+              fallbackDataUrl
+            });
+          },
+          'image/jpeg',
+          quality
+        );
+      } catch {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ blob: file, fallbackDataUrl: '' });
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ blob: file, fallbackDataUrl: '' });
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+// Upload doctor or clinic photo to Firebase Storage and return download URL
+export async function uploadDoctorImageToStorage(
+  doctorId: string,
+  kind: 'doctor' | 'clinic',
+  file: File
+): Promise<string> {
+  const { blob, fallbackDataUrl } = await compressImageFile(file);
+  const filePath = `doctors/${doctorId}/${kind}_${Date.now()}.jpg`;
+  const storageRef = ref(storage, filePath);
+
+  try {
+    const uploadTask = (async () => {
+      const snapshot = await uploadBytes(storageRef, blob, {
+        contentType: blob.type || 'image/jpeg'
+      });
+      return await getDownloadURL(snapshot.ref);
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase Storage upload timed out')), 15000)
+    );
+
+    const downloadUrl = await Promise.race([uploadTask, timeoutPromise]);
+    return downloadUrl;
+  } catch (err) {
+    console.warn(`[Firebase Storage] Upload failed for ${filePath}:`, err);
+    if (fallbackDataUrl && fallbackDataUrl.length <= 450000) {
+      return fallbackDataUrl;
+    }
+    throw err;
+  }
+}
 
 // Error Handling per Skill requirements
 export enum OperationType {
@@ -98,6 +223,10 @@ export function subscribeDoctors(
       const doctorsList: Doctor[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        const cleanClinicPhoto = sanitizeDoctorImageUrl(data.clinicPhoto);
+        const cleanClinicImage = sanitizeDoctorImageUrl(data.clinic_image);
+        const cleanDoctorPhoto = sanitizeDoctorImageUrl(data.doctorPhoto);
+
         doctorsList.push({
           id: docSnap.id,
           name: data.name || '',
@@ -109,8 +238,9 @@ export function subscribeDoctors(
           city: data.city || undefined,
           center: data.center || data.city || undefined,
           price: Number(data.price || 0),
-          clinicPhoto: data.clinicPhoto || undefined,
-          doctorPhoto: data.doctorPhoto || undefined,
+          clinicPhoto: cleanClinicPhoto || cleanClinicImage || undefined,
+          clinic_image: cleanClinicImage || cleanClinicPhoto || undefined,
+          doctorPhoto: cleanDoctorPhoto || undefined,
           workingHours: data.workingHours || undefined,
           isDemo: !!data.isDemo,
           status: (data.status as ProviderStatus) || 'pending',
@@ -135,6 +265,15 @@ export async function saveDoctorToFirestore(doctor: Doctor): Promise<void> {
   const path = 'doctors';
   try {
     const docRef = doc(db, path, doctor.id);
+    const cleanDocPhoto = sanitizeDoctorImageUrl(doctor.doctorPhoto);
+    const cleanClinPhoto = sanitizeDoctorImageUrl(doctor.clinicPhoto);
+    const cleanClinImage = sanitizeDoctorImageUrl(doctor.clinic_image);
+
+    const resolvedDoctorPhoto = cleanDocPhoto || DEFAULT_DOCTOR_IMAGE_URL;
+    const resolvedClinicPhoto = cleanClinPhoto || cleanClinImage || DEFAULT_DOCTOR_IMAGE_URL;
+    const resolvedClinicImage =
+      cleanClinImage || cleanClinPhoto || cleanDocPhoto || DEFAULT_DOCTOR_IMAGE_URL;
+
     const dataToSave = {
       name: doctor.name,
       specialty: doctor.specialty,
@@ -145,8 +284,9 @@ export async function saveDoctorToFirestore(doctor: Doctor): Promise<void> {
       city: doctor.city || doctor.center || '',
       center: doctor.center || doctor.city || '',
       price: Number(doctor.price),
-      clinicPhoto: doctor.clinicPhoto || '',
-      doctorPhoto: doctor.doctorPhoto || '',
+      clinicPhoto: resolvedClinicPhoto,
+      clinic_image: resolvedClinicImage,
+      doctorPhoto: resolvedDoctorPhoto,
       workingHours: doctor.workingHours || '',
       isDemo: false,
       status: doctor.status,
