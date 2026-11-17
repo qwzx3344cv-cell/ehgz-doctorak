@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Lab, LabTestItem, Review } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
-import defaultLabBanner from '../assets/images/default_lab_banner_1794946701085.jpg';
+import { sanitizeClinicImageUrl } from '../firebase';
 
 interface LabCardProps {
   lab: Lab;
@@ -48,34 +48,27 @@ export const LabCard: React.FC<LabCardProps> = ({
     lab.googleMapsUrl
   );
 
-  const isCustomPhoto = (url?: string) =>
-    Boolean(
-      url &&
-        url.trim() !== '' &&
-        url.trim() !== 'lab_image' &&
-        url.trim() !== 'clinic_image' &&
-        url.trim() !== '/assets/default-lab.jpg'
-    );
-
-  const photoSrc = !imgError && isCustomPhoto(lab.labPhoto) ? lab.labPhoto! : defaultLabBanner;
+  const labImageSrc = sanitizeClinicImageUrl(lab.labPhoto);
 
   return (
     <div className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-teal-400 dark:hover:border-teal-600 transition-all duration-300 flex flex-col overflow-hidden">
       
-      {/* Full Ad / Lab Image: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
-      <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <img
-          src={photoSrc}
-          alt={lab.name}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          onError={() => {
-            if (!imgError) setImgError(true);
-          }}
-          className="w-full h-auto object-contain block select-none"
-        />
-      </div>
+      {/* Lab Ad Image Only: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
+      {labImageSrc && !imgError && (
+        <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <img
+            src={labImageSrc}
+            alt={lab.name}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
+            onError={() => {
+              if (!imgError) setImgError(true);
+            }}
+            className="w-full h-auto object-contain block select-none"
+          />
+        </div>
+      )}
 
       {/* White Card Body Below Image with All Lab Details */}
       <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 flex-1 flex flex-col justify-between space-y-4">

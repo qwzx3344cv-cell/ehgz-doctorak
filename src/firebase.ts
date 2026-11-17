@@ -39,27 +39,29 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-export const DEFAULT_DOCTOR_IMAGE_URL = '/assets/default-doctor.jpg';
-export const DEFAULT_LAB_IMAGE_URL = '/assets/default-lab.jpg';
-
-// Sanitize image fields so literal placeholder names like "clinic_image" are never treated as URLs
-export function sanitizeDoctorImageUrl(val?: unknown): string {
+// Sanitize clinic / lab ad image URLs and ignore any personal photo placeholders or defaults
+export function sanitizeClinicImageUrl(val?: unknown): string {
   if (typeof val !== 'string') return '';
   const trimmed = val.trim();
   if (
     !trimmed ||
     trimmed === 'clinic_image' ||
     trimmed === 'doctor_image' ||
+    trimmed === 'personal_image' ||
     trimmed === 'lab_image' ||
     trimmed === 'undefined' ||
-    trimmed === 'null'
+    trimmed === 'null' ||
+    trimmed.includes('default-doctor') ||
+    trimmed.includes('default-lab') ||
+    trimmed.includes('default_doctor_portrait')
   ) {
     return '';
   }
   return trimmed;
 }
 
-export const sanitizeProviderImageUrl = sanitizeDoctorImageUrl;
+export const sanitizeDoctorImageUrl = sanitizeClinicImageUrl;
+export const sanitizeProviderImageUrl = sanitizeClinicImageUrl;
 
 // Process image while preserving sharp high-resolution quality for ad flyers & text readability
 async function prepareImageForUpload(
@@ -201,7 +203,7 @@ async function prepareImageForUpload(
 async function uploadProviderImageToStorage(
   folder: 'doctors' | 'labs',
   providerId: string,
-  kind: 'doctor' | 'clinic' | 'lab',
+  kind: 'clinic' | 'lab',
   file: File
 ): Promise<string> {
   const { uploadBlob, contentType, ext, fallbackDataUrl } = await prepareImageForUpload(file);
@@ -231,16 +233,15 @@ async function uploadProviderImageToStorage(
   }
 }
 
-// Upload doctor or clinic photo to Firebase Storage and return download URL
+// Upload clinic ad photo to Firebase Storage and return download URL
 export async function uploadDoctorImageToStorage(
   doctorId: string,
-  kind: 'doctor' | 'clinic',
   file: File
 ): Promise<string> {
-  return uploadProviderImageToStorage('doctors', doctorId, kind, file);
+  return uploadProviderImageToStorage('doctors', doctorId, 'clinic', file);
 }
 
-// Upload lab ad/banner photo to Firebase Storage and return download URL
+// Upload lab ad photo to Firebase Storage and return download URL
 export async function uploadLabImageToStorage(
   labId: string,
   file: File
@@ -309,9 +310,15 @@ export function subscribeDoctors(
       const doctorsList: Doctor[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const cleanClinicPhoto = sanitizeDoctorImageUrl(data.clinicPhoto);
-        const cleanClinicImage = sanitizeDoctorImageUrl(data.clinic_image);
-        const cleanDoctorPhoto = sanitizeDoctorImageUrl(data.doctorPhoto);
+        const cleanClinicPhoto = sanitizeClinicImageUrl(data.clinicPhoto);
+        const rawClinicImage = sanitizeClinicImageUrl(data.clinic_image);
+        const oldPersonalPhoto = sanitizeClinicImageUrl(data.doctorPhoto);
+        // Ignore legacy clinic_image if it was only a fallback copy of old personal doctorPhoto
+        const cleanClinicImage =
+          rawClinicImage && oldPersonalPhoto && rawClinicImage === oldPersonalPhoto && !cleanClinicPhoto
+            ? ''
+            : rawClinicImage;
+        const resolvedClinic = cleanClinicImage || cleanClinicPhoto || undefined;
 
         doctorsList.push({
           id: docSnap.id,
@@ -324,9 +331,8 @@ export function subscribeDoctors(
           city: data.city || undefined,
           center: data.center || data.city || undefined,
           price: Number(data.price || 0),
-          clinicPhoto: cleanClinicPhoto || cleanClinicImage || undefined,
-          clinic_image: cleanClinicImage || cleanClinicPhoto || undefined,
-          doctorPhoto: cleanDoctorPhoto || undefined,
+          clinicPhoto: resolvedClinic,
+          clinic_image: resolvedClinic,
           workingHours: data.workingHours || undefined,
           isDemo: !!data.isDemo,
           status: (data.status as ProviderStatus) || 'pending',
@@ -351,14 +357,9 @@ export async function saveDoctorToFirestore(doctor: Doctor): Promise<void> {
   const path = 'doctors';
   try {
     const docRef = doc(db, path, doctor.id);
-    const cleanDocPhoto = sanitizeDoctorImageUrl(doctor.doctorPhoto);
-    const cleanClinPhoto = sanitizeDoctorImageUrl(doctor.clinicPhoto);
-    const cleanClinImage = sanitizeDoctorImageUrl(doctor.clinic_image);
-
-    const resolvedDoctorPhoto = cleanDocPhoto || DEFAULT_DOCTOR_IMAGE_URL;
-    const resolvedClinicPhoto = cleanClinPhoto || cleanClinImage || DEFAULT_DOCTOR_IMAGE_URL;
-    const resolvedClinicImage =
-      cleanClinImage || cleanClinPhoto || cleanDocPhoto || DEFAULT_DOCTOR_IMAGE_URL;
+    const cleanClinPhoto = sanitizeClinicImageUrl(doctor.clinicPhoto);
+    const cleanClinImage = sanitizeClinicImageUrl(doctor.clinic_image);
+    const resolvedClinicImage = cleanClinImage || cleanClinPhoto || '';
 
     const dataToSave = {
       name: doctor.name,
@@ -370,9 +371,8 @@ export async function saveDoctorToFirestore(doctor: Doctor): Promise<void> {
       city: doctor.city || doctor.center || '',
       center: doctor.center || doctor.city || '',
       price: Number(doctor.price),
-      clinicPhoto: resolvedClinicPhoto,
+      clinicPhoto: resolvedClinicImage,
       clinic_image: resolvedClinicImage,
-      doctorPhoto: resolvedDoctorPhoto,
       workingHours: doctor.workingHours || '',
       isDemo: false,
       status: doctor.status,
@@ -483,7 +483,7 @@ export async function saveLabToFirestore(lab: Lab): Promise<void> {
   const path = 'labs';
   try {
     const docRef = doc(db, path, lab.id);
-    const cleanLabPhoto = sanitizeProviderImageUrl(lab.labPhoto);
+    const cleanLabPhoto = sanitizeClinicImageUrl(lab.labPhoto);
     const dataToSave = {
       name: lab.name,
       phone: lab.phone,
@@ -491,7 +491,7 @@ export async function saveLabToFirestore(lab: Lab): Promise<void> {
       governorate: lab.governorate || '',
       city: lab.city || lab.center || '',
       center: lab.center || lab.city || '',
-      labPhoto: cleanLabPhoto || DEFAULT_LAB_IMAGE_URL,
+      labPhoto: cleanLabPhoto || '',
       tests: lab.tests || [],
       startingPrice: Number(lab.startingPrice),
       workingHours: lab.workingHours || '',

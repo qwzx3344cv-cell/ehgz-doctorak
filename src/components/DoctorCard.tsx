@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Doctor, Review } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
-import defaultDoctorPortrait from '../assets/images/default_doctor_portrait_1794938584483.jpg';
+import { sanitizeClinicImageUrl } from '../firebase';
 
 interface DoctorCardProps {
   doctor: Doctor;
@@ -47,39 +47,29 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({
     doctor.googleMapsUrl
   );
 
-  const isCustomPhoto = (url?: string) =>
-    Boolean(
-      url &&
-        url.trim() !== '' &&
-        url.trim() !== 'clinic_image' &&
-        url.trim() !== 'doctor_image' &&
-        url.trim() !== '/assets/default-doctor.jpg'
-    );
-
-  const customPhoto =
-    (isCustomPhoto(doctor.clinic_image) ? doctor.clinic_image : undefined) ||
-    (isCustomPhoto(doctor.doctorPhoto) ? doctor.doctorPhoto : undefined) ||
-    (isCustomPhoto(doctor.clinicPhoto) ? doctor.clinicPhoto : undefined);
-
-  const photoSrc = !imgError && customPhoto ? customPhoto : defaultDoctorPortrait;
+  const clinicImageSrc =
+    sanitizeClinicImageUrl(doctor.clinic_image) ||
+    sanitizeClinicImageUrl(doctor.clinicPhoto);
 
   return (
     <div className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-teal-400 dark:hover:border-teal-600 transition-all duration-300 flex flex-col overflow-hidden">
       
-      {/* Full Ad / Doctor Image: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
-      <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <img
-          src={photoSrc}
-          alt={doctor.name}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          onError={() => {
-            if (!imgError) setImgError(true);
-          }}
-          className="w-full h-auto object-contain block select-none"
-        />
-      </div>
+      {/* Clinic / Ad Image Only: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
+      {clinicImageSrc && !imgError && (
+        <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <img
+            src={clinicImageSrc}
+            alt={doctor.name}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
+            onError={() => {
+              if (!imgError) setImgError(true);
+            }}
+            className="w-full h-auto object-contain block select-none"
+          />
+        </div>
+      )}
 
       {/* White Card Body Below Image with All Doctor Information */}
       <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 flex-1 flex flex-col justify-between space-y-3.5">

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Lab, LabTestItem } from '../types';
 import { EGYPT_GOVERNORATES, getCentersForGovernorate } from '../data/egyptLocations';
-import { DEFAULT_LAB_IMAGE_URL, uploadLabImageToStorage } from '../firebase';
+import { uploadLabImageToStorage } from '../firebase';
 
 interface LabRegisterModalProps {
   isOpen: boolean;
@@ -120,7 +120,7 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
       const labId = 'lab-' + Date.now();
       const uploadedLabPhoto = labPhotoFile
         ? await uploadLabImageToStorage(labId, labPhotoFile)
-        : DEFAULT_LAB_IMAGE_URL;
+        : '';
 
       const minPrice = tests.length > 0 ? Math.min(...tests.map((t) => t.price)) : 150;
 
@@ -135,7 +135,7 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
         googleMapsUrl: googleMapsUrl.trim() || undefined,
         startingPrice: minPrice,
         tests: tests.length > 0 ? tests : [{ id: 'test-def', name: 'فحص عام', price: 150 }],
-        labPhoto: uploadedLabPhoto,
+        labPhoto: uploadedLabPhoto || undefined,
         workingHours: workingHours.trim() || undefined,
         isDemo: false,
         status: 'pending', // Pending admin approval
@@ -425,7 +425,7 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
 
             {/* Lab Photo Upload */}
             <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 text-center hover:border-teal-500 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
-              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة إعلان المعمل / الواجهة</span>
+              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">صورة المعمل / الإعلان</span>
               {labPhotoPreview ? (
                 <div className="space-y-2">
                   <div className="w-full rounded-xl overflow-hidden border-2 border-teal-500 shadow-xs bg-white">
@@ -465,7 +465,7 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
                   <div className="w-10 h-10 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center">
                     <Upload className="w-4 h-4" />
                   </div>
-                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">رفع صورة إعلان المعمل</span>
+                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">اختر صورة المعمل / الإعلان</span>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">PNG / JPG (تظهر كاملة وبجودة عالية)</span>
                   <input
                     type="file"

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Doctor, Lab, Review } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
+import { sanitizeClinicImageUrl } from '../firebase';
 
 interface ProviderReviewsModalProps {
   isOpen: boolean;
@@ -42,6 +43,9 @@ export const ProviderReviewsModal: React.FC<ProviderReviewsModalProps> = ({
   const isDoctor = providerType === 'doctor';
   const doctor = isDoctor ? (provider as Doctor) : null;
   const lab = !isDoctor ? (provider as Lab) : null;
+  const providerAdImage = isDoctor
+    ? sanitizeClinicImageUrl(doctor?.clinic_image) || sanitizeClinicImageUrl(doctor?.clinicPhoto)
+    : sanitizeClinicImageUrl(lab?.labPhoto);
 
   // Google Maps directions URL
   const mapsUrl = getGoogleMapsUrl(
@@ -76,9 +80,6 @@ export const ProviderReviewsModal: React.FC<ProviderReviewsModalProps> = ({
         {/* Header */}
         <div className="bg-[#0f2a44] text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
-              {isDoctor ? <Stethoscope className="w-6 h-6" /> : <FlaskConical className="w-6 h-6" />}
-            </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-lg sm:text-xl text-white">
@@ -106,6 +107,18 @@ export const ProviderReviewsModal: React.FC<ProviderReviewsModalProps> = ({
         {/* Content Body */}
         <div className="flex-1 p-5 overflow-y-auto space-y-6">
           
+          {/* Clinic / Lab Ad Image Only (Full Width, Uncropped, Clean White Backdrop, Zero Overlays) */}
+          {providerAdImage && (
+            <div className="w-full rounded-2xl bg-white border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
+              <img
+                src={providerAdImage}
+                alt={provider.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-auto object-contain block"
+              />
+            </div>
+          )}
+
           {/* Clinic / Lab Location & Google Maps Navigation Card */}
           <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-slate-50 dark:from-slate-800/90 dark:via-slate-800/60 dark:to-slate-800/40 border border-blue-200/90 dark:border-blue-900/60 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-blue-100 dark:border-slate-700/60">

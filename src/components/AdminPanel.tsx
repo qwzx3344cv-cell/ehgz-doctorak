@@ -40,6 +40,7 @@ import { STORAGE_KEYS, DEFAULT_ADMIN_PASSWORD, SPECIALTIES } from '../constants'
 import { FinancialReports } from './FinancialReports';
 import { ProviderStatementModal } from './ProviderStatementModal';
 import { EGYPT_GOVERNORATES, getCentersForGovernorate } from '../data/egyptLocations';
+import { sanitizeClinicImageUrl } from '../firebase';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -921,16 +922,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="text-xs text-slate-500">{doc.address}</div>
                               </div>
 
-                              {doc.doctorPhoto ? (
+                              {(sanitizeClinicImageUrl(doc.clinic_image) || sanitizeClinicImageUrl(doc.clinicPhoto)) && (
                                 <img
-                                  src={doc.doctorPhoto}
-                                  alt=""
-                                  className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-xs shrink-0"
+                                  src={sanitizeClinicImageUrl(doc.clinic_image) || sanitizeClinicImageUrl(doc.clinicPhoto)}
+                                  alt={doc.name}
+                                  className="w-20 h-16 rounded-xl object-contain bg-white border border-slate-200 shadow-xs shrink-0"
                                 />
-                              ) : (
-                                <div className="w-12 h-12 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold text-base border border-teal-100 shrink-0">
-                                  {doc.name.charAt(0)}
-                                </div>
                               )}
                             </div>
 
@@ -1105,16 +1102,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="text-xs text-slate-500">{lab.address}</div>
                               </div>
 
-                              {lab.labPhoto ? (
+                              {sanitizeClinicImageUrl(lab.labPhoto) && (
                                 <img
-                                  src={lab.labPhoto}
-                                  alt=""
-                                  className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-xs shrink-0"
+                                  src={sanitizeClinicImageUrl(lab.labPhoto)}
+                                  alt={lab.name}
+                                  className="w-20 h-16 rounded-xl object-contain bg-white border border-slate-200 shadow-xs shrink-0"
                                 />
-                              ) : (
-                                <div className="w-12 h-12 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center font-bold text-base border border-cyan-100 shrink-0">
-                                  <FlaskConical className="w-6 h-6" />
-                                </div>
                               )}
                             </div>
 
@@ -1272,8 +1265,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     )}
                                     <p className="text-xs text-slate-600 mt-0.5">{doc.address}</p>
                                   </div>
-                                  {doc.doctorPhoto && (
-                                    <img src={doc.doctorPhoto} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-xs" />
+                                  {(sanitizeClinicImageUrl(doc.clinic_image) || sanitizeClinicImageUrl(doc.clinicPhoto)) && (
+                                    <img
+                                      src={sanitizeClinicImageUrl(doc.clinic_image) || sanitizeClinicImageUrl(doc.clinicPhoto)}
+                                      alt={doc.name}
+                                      className="w-20 h-16 rounded-xl object-contain bg-white border border-slate-200 shadow-xs shrink-0"
+                                    />
                                   )}
                                 </div>
 
@@ -1325,8 +1322,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     )}
                                     <p className="text-xs text-slate-600 mt-0.5">{lab.address}</p>
                                   </div>
-                                  {lab.labPhoto && (
-                                    <img src={lab.labPhoto} alt="" className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-xs" />
+                                  {sanitizeClinicImageUrl(lab.labPhoto) && (
+                                    <img
+                                      src={sanitizeClinicImageUrl(lab.labPhoto)}
+                                      alt={lab.name}
+                                      className="w-20 h-16 rounded-xl object-contain bg-white border border-slate-200 shadow-xs shrink-0"
+                                    />
                                   )}
                                 </div>
 

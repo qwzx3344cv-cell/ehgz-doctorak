@@ -18,6 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 import { Doctor, Lab, LabTestItem, Booking } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
+import { sanitizeClinicImageUrl } from '../firebase';
 
 interface BookingModalProps {
   provider: Doctor | Lab | null;
@@ -55,6 +56,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const isDoctor = providerType === 'doctor';
   const doctor = isDoctor ? (provider as Doctor) : null;
   const lab = !isDoctor ? (provider as Lab) : null;
+  const providerAdImage = isDoctor
+    ? sanitizeClinicImageUrl(doctor?.clinic_image) || sanitizeClinicImageUrl(doctor?.clinicPhoto)
+    : sanitizeClinicImageUrl(lab?.labPhoto);
 
   const currentPrice = isDoctor
     ? doctor?.price || 280
@@ -245,11 +249,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           /* Booking Form */
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             
+            {/* Clinic / Lab Ad Image Only (Uncropped, Object-Contain, Clean White Backdrop) */}
+            {providerAdImage && (
+              <div className="w-full rounded-2xl bg-white border border-slate-200 dark:border-slate-700 overflow-hidden shadow-2xs">
+                <img
+                  src={providerAdImage}
+                  alt={provider.name}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-auto max-h-72 object-contain block"
+                />
+              </div>
+            )}
+
             {/* Provider Quick Banner */}
             <div className="flex items-center gap-3 p-3 rounded-2xl bg-teal-50/70 dark:bg-slate-800/80 border border-teal-100 dark:border-slate-700">
-              <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-800 text-teal-700 dark:text-teal-400 flex items-center justify-center font-bold text-lg shadow-2xs shrink-0 border border-teal-100/60 dark:border-slate-700">
-                {isDoctor ? <Stethoscope className="w-6 h-6 text-[#0d9488] dark:text-teal-400" /> : <FlaskConical className="w-6 h-6 text-teal-600 dark:text-teal-400" />}
-              </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-bold text-teal-700 dark:text-teal-400">
                   {isDoctor ? doctor?.specialty : 'معمل تحاليل طبية'}
