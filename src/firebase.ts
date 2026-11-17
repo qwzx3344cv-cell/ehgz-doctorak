@@ -39,29 +39,27 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Sanitize clinic / lab ad image URLs and ignore any personal photo placeholders or defaults
+// Sanitize clinic / lab ad image URLs using an allowlist and ignore any legacy portrait uploads
 export function sanitizeClinicImageUrl(val?: unknown): string {
   if (typeof val !== 'string') return '';
   const trimmed = val.trim();
   if (
     !trimmed ||
     trimmed === 'clinic_image' ||
-    trimmed === 'doctor_image' ||
-    trimmed === 'personal_image' ||
     trimmed === 'lab_image' ||
-    trimmed === 'undefined' ||
-    trimmed === 'null' ||
-    trimmed.includes('default-doctor') ||
-    trimmed.includes('default-lab') ||
-    trimmed.includes('default_doctor_portrait')
+    /\/doctor_\d+/i.test(trimmed)
   ) {
     return '';
   }
-  return trimmed;
+  if (
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+  return '';
 }
-
-export const sanitizeDoctorImageUrl = sanitizeClinicImageUrl;
-export const sanitizeProviderImageUrl = sanitizeClinicImageUrl;
 
 // Process image while preserving sharp high-resolution quality for ad flyers & text readability
 async function prepareImageForUpload(
@@ -311,13 +309,7 @@ export function subscribeDoctors(
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         const cleanClinicPhoto = sanitizeClinicImageUrl(data.clinicPhoto);
-        const rawClinicImage = sanitizeClinicImageUrl(data.clinic_image);
-        const oldPersonalPhoto = sanitizeClinicImageUrl(data.doctorPhoto);
-        // Ignore legacy clinic_image if it was only a fallback copy of old personal doctorPhoto
-        const cleanClinicImage =
-          rawClinicImage && oldPersonalPhoto && rawClinicImage === oldPersonalPhoto && !cleanClinicPhoto
-            ? ''
-            : rawClinicImage;
+        const cleanClinicImage = sanitizeClinicImageUrl(data.clinic_image);
         const resolvedClinic = cleanClinicImage || cleanClinicPhoto || undefined;
 
         doctorsList.push({
@@ -457,7 +449,7 @@ export function subscribeLabs(
           governorate: data.governorate || undefined,
           city: data.city || undefined,
           center: data.center || data.city || undefined,
-          labPhoto: sanitizeProviderImageUrl(data.labPhoto) || undefined,
+          labPhoto: sanitizeClinicImageUrl(data.labPhoto) || undefined,
           tests: Array.isArray(data.tests) ? data.tests : [],
           startingPrice: Number(data.startingPrice || 0),
           workingHours: data.workingHours || undefined,
