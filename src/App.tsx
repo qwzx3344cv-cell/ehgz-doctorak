@@ -363,9 +363,13 @@ export default function App() {
   };
 
   const scrollToSearch = () => {
-    if (searchSectionRef.current) {
-      searchSectionRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    setProviderTypeView('all');
+    setActiveFilter('all');
+    setTimeout(() => {
+      if (searchSectionRef.current) {
+        searchSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 60);
   };
 
   // Booking triggers
@@ -384,12 +388,8 @@ export default function App() {
   };
 
   const handleBookingSuccess = async (newBooking: Booking) => {
-    setBookings((prev) => [newBooking, ...prev]);
-    try {
-      await saveBookingToFirestore(newBooking);
-    } catch (e) {
-      console.error('Failed to save booking to Firestore:', e);
-    }
+    await saveBookingToFirestore(newBooking);
+    setBookings((prev) => (prev.some((b) => b.id === newBooking.id) ? prev : [newBooking, ...prev]));
   };
 
   // Reviews & Rating triggers
@@ -552,13 +552,12 @@ export default function App() {
   };
 
   const handleDeleteDoctor = async (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا الطبيب؟')) {
-      setDoctors((prev) => prev.filter((doc) => doc.id !== id));
-      try {
-        await deleteDoctorFromFirestore(id);
-      } catch (e) {
-        console.error('Failed to delete doctor from Firestore:', e);
-      }
+    setDoctors((prev) => prev.filter((doc) => doc.id !== id));
+    try {
+      await deleteDoctorFromFirestore(id);
+    } catch (e) {
+      console.error('Failed to delete doctor from Firestore:', e);
+      throw e;
     }
   };
 
@@ -613,13 +612,12 @@ export default function App() {
   };
 
   const handleDeleteLab = async (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا المعمل؟')) {
-      setLabs((prev) => prev.filter((l) => l.id !== id));
-      try {
-        await deleteLabFromFirestore(id);
-      } catch (e) {
-        console.error('Failed to delete lab from Firestore:', e);
-      }
+    setLabs((prev) => prev.filter((l) => l.id !== id));
+    try {
+      await deleteLabFromFirestore(id);
+    } catch (e) {
+      console.error('Failed to delete lab from Firestore:', e);
+      throw e;
     }
   };
 
@@ -682,13 +680,12 @@ export default function App() {
   };
 
   const handleDeleteBooking = async (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا الحجز؟')) {
-      setBookings((prev) => prev.filter((b) => b.id !== id));
-      try {
-        await deleteBookingFromFirestore(id);
-      } catch (e) {
-        console.error('Failed to delete booking from Firestore:', e);
-      }
+    setBookings((prev) => prev.filter((b) => b.id !== id));
+    try {
+      await deleteBookingFromFirestore(id);
+    } catch (e) {
+      console.error('Failed to delete booking from Firestore:', e);
+      throw e;
     }
   };
 
@@ -706,26 +703,18 @@ export default function App() {
 
   // Reset database completely empty
   const handleResetSeedData = async () => {
-    if (confirm('هل أنت متأكد من إفراغ قاعدة البيانات تماماً؟')) {
-      try {
-        for (const docItem of doctors) {
-          await deleteDoctorFromFirestore(docItem.id);
-        }
-        for (const labItem of labs) {
-          await deleteLabFromFirestore(labItem.id);
-        }
-        for (const b of bookings) {
-          await deleteBookingFromFirestore(b.id);
-        }
-        setDoctors([]);
-        setLabs([]);
-        setBookings([]);
-        alert('تم إفراغ قاعدة البيانات بنجاح!');
-      } catch (e) {
-        console.error('Error emptying database:', e);
-        alert('حدث خطأ أثناء التفريغ');
-      }
+    for (const docItem of doctors) {
+      await deleteDoctorFromFirestore(docItem.id);
     }
+    for (const labItem of labs) {
+      await deleteLabFromFirestore(labItem.id);
+    }
+    for (const b of bookings) {
+      await deleteBookingFromFirestore(b.id);
+    }
+    setDoctors([]);
+    setLabs([]);
+    setBookings([]);
   };
 
   // Approved lists for visitors

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Stethoscope, 
   MapPin, 
@@ -50,6 +50,10 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({
   const clinicImageSrc =
     sanitizeClinicImageUrl(doctor.clinic_image) ||
     sanitizeClinicImageUrl(doctor.clinicPhoto);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [clinicImageSrc]);
 
   return (
     <div className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-teal-400 dark:hover:border-teal-600 transition-all duration-300 flex flex-col overflow-hidden">

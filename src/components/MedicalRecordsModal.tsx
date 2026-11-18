@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { EPrescription, MedicalRecordAttachment, MedicalAttachmentType, Booking } from '../types';
 import { PrescriptionPrintModal } from './PrescriptionPrintModal';
+import { uploadMedicalRecordFileToStorage } from '../firebase';
 
 interface MedicalRecordsModalProps {
   isOpen: boolean;
@@ -75,16 +76,27 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
   const [uploadNotes, setUploadNotes] = useState('');
   const [uploadPatientName, setUploadPatientName] = useState('');
   const [selectedFileData, setSelectedFileData] = useState<{
-    url: string;
+    previewUrl: string;
+    rawFile: File;
     name: string;
     type: 'image' | 'pdf';
     size: string;
   } | null>(null);
 
+  const [confirmDeleteRxId, setConfirmDeleteRxId] = useState<string | null>(null);
+  const [confirmDeleteRecordId, setConfirmDeleteRecordId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (selectedFileData?.previewUrl && selectedFileData.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(selectedFileData.previewUrl);
+      }
+    };
+  }, [selectedFileData]);
 
   // Update localStorage when phone changes
   useEffect(() => {
@@ -135,19 +147,19 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
     new Set(bookings.map((b) => b.patientPhone).filter(Boolean))
   );
 
-  // Handle File Selection and Base64 conversion
+  // Handle File Selection with Firebase Storage prep
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError('');
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check size limit: max 4MB for Firestore base64 storage safety
-    if (file.size > 4 * 1024 * 1024) {
-      setUploadError('حجم الملف كبير جداً (الحد الأقصى ٤ ميجابايت)');
+    // Max 8MB for Firebase Storage uploads
+    if (file.size > 8 * 1024 * 1024) {
+      setUploadError('حجم الملف كبير جداً (الحد الأقصى ٨ ميجابايت)');
       return;
     }
 
-    const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isImage = file.type.startsWith('image/');
 
     if (!isPdf && !isImage) {
@@ -155,29 +167,22 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const sizeKb = Math.round(file.size / 1024);
-      const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+    const sizeKb = Math.round(file.size / 1024);
+    const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+    const previewUrl = URL.createObjectURL(file);
 
-      setSelectedFileData({
-        url: result,
-        name: file.name,
-        type: isPdf ? 'pdf' : 'image',
-        size: sizeStr
-      });
+    setSelectedFileData({
+      previewUrl,
+      rawFile: file,
+      name: file.name,
+      type: isPdf ? 'pdf' : 'image',
+      size: sizeStr
+    });
 
-      // Auto-populate title if empty
-      if (!uploadTitle.trim()) {
-        const cleanName = file.name.replace(/\.[^/.]+$/, '');
-        setUploadTitle(cleanName);
-      }
-    };
-    reader.onerror = () => {
-      setUploadError('فشل قراءة الملف، يرجى المحاولة مرة أخرى');
-    };
-    reader.readAsDataURL(file);
+    if (!uploadTitle.trim()) {
+      const cleanName = file.name.replace(/\.[^/.]+$/, '');
+      setUploadTitle(cleanName);
+    }
   };
 
   // Submit new medical attachment
@@ -203,13 +208,16 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
 
     setIsUploading(true);
     try {
+      const recordId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const uploadedFileUrl = await uploadMedicalRecordFileToStorage(recordId, selectedFileData.rawFile);
+
       const newRecord: MedicalRecordAttachment = {
-        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: recordId,
         patientPhone: patientPhone.trim(),
         patientName: uploadPatientName.trim() || 'المريض',
         title: uploadTitle.trim(),
         type: uploadType,
-        fileUrl: selectedFileData.url,
+        fileUrl: uploadedFileUrl,
         fileName: selectedFileData.name,
         fileType: selectedFileData.type,
         fileSize: selectedFileData.size,
@@ -230,8 +238,8 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
         setActiveTab('records');
         setUploadSuccessMsg('');
       }, 1200);
-    } catch (err) {
-      setUploadError('حدث خطأ أثناء الحفظ. يرجى المحاولة مرة أخرى.');
+    } catch (err: any) {
+      setUploadError(err?.message || 'حدث خطأ أثناء رفع أو حفظ الفحص. يرجى المحاولة مرة أخرى.');
     } finally {
       setIsUploading(false);
     }
@@ -439,18 +447,36 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
                           </button>
 
                           {onDeletePrescription && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm('هل ترغب حقاً في حذف هذه الروشتة من السجل؟')) {
-                                  onDeletePrescription(rx.id);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                              title="حذف"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            confirmDeleteRxId === rx.id ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onDeletePrescription(rx.id);
+                                    setConfirmDeleteRxId(null);
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold transition-colors"
+                                >
+                                  تأكيد الحذف
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteRxId(null)}
+                                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-colors"
+                                >
+                                  تراجع
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteRxId(rx.id)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                title="حذف"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -603,18 +629,36 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
                               </a>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm(`هل أنت متأكد من حذف "${rec.title}"؟`)) {
-                                  onDeleteMedicalRecord(rec.id);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                              title="حذف المستند"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {confirmDeleteRecordId === rec.id ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onDeleteMedicalRecord(rec.id);
+                                    setConfirmDeleteRecordId(null);
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold transition-colors"
+                                >
+                                  تأكيد الحذف
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteRecordId(null)}
+                                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-colors"
+                                >
+                                  تراجع
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteRecordId(rec.id)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                title="حذف المستند"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -784,7 +828,7 @@ export const MedicalRecordsModal: React.FC<MedicalRecordsModalProps> = ({
                             انقر لاختيار صورة التحليل أو ملف الـ PDF
                           </p>
                           <p className="text-[11px] text-slate-400 mt-0.5">
-                            يدعم صيغ JPG، PNG، WEBP، وملفات PDF (حتى ٤ ميجابايت)
+                            يدعم صيغ JPG، PNG، WEBP، وملفات PDF (حتى ٨ ميجابايت)
                           </p>
                         </div>
                       </>

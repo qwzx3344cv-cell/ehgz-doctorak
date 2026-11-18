@@ -85,8 +85,8 @@ export const DoctorRegisterModal: React.FC<DoctorRegisterModalProps> = ({
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!name.trim() || !phone1.trim() || !address.trim() || !price) {
-      alert('من فضلك أكمل الحقول المطلوبة');
+    if (!name.trim() || !phone1.trim() || !address.trim() || !Number.isFinite(Number(price)) || Number(price) <= 0) {
+      setSubmitError('من فضلك أكمل الحقول المطلوبة وأدخل سعر كشف صحيح');
       return;
     }
 

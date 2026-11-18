@@ -59,23 +59,23 @@ interface AdminPanelProps {
   isCommissionEnabled?: boolean;
   commissionRate?: number;
   onToggleCommission?: (enabled: boolean) => void;
-  onApproveDoctor: (id: string) => void;
-  onRejectDoctor: (id: string) => void;
-  onDeleteDoctor: (id: string) => void;
-  onBlockDoctor?: (id: string) => void;
-  onUnblockDoctor?: (id: string) => void;
-  onApproveLab: (id: string) => void;
-  onRejectLab: (id: string) => void;
-  onDeleteLab: (id: string) => void;
-  onBlockLab?: (id: string) => void;
-  onUnblockLab?: (id: string) => void;
+  onApproveDoctor: (id: string) => void | Promise<void>;
+  onRejectDoctor: (id: string) => void | Promise<void>;
+  onDeleteDoctor: (id: string) => void | Promise<void>;
+  onBlockDoctor?: (id: string) => void | Promise<void>;
+  onUnblockDoctor?: (id: string) => void | Promise<void>;
+  onApproveLab: (id: string) => void | Promise<void>;
+  onRejectLab: (id: string) => void | Promise<void>;
+  onDeleteLab: (id: string) => void | Promise<void>;
+  onBlockLab?: (id: string) => void | Promise<void>;
+  onUnblockLab?: (id: string) => void | Promise<void>;
   onAddDoctorDirectly?: (doctor: Doctor) => Promise<void>;
   onAddLabDirectly?: (lab: Lab) => Promise<void>;
   onUpdateDoctor?: (id: string, updates: Partial<Doctor>) => Promise<void>;
   onUpdateLab?: (id: string, updates: Partial<Lab>) => Promise<void>;
-  onUpdateBookingStatus: (id: string, status: BookingStatus, booking?: Booking) => void;
-  onDeleteBooking: (id: string) => void;
-  onResetSeedData: () => void;
+  onUpdateBookingStatus: (id: string, status: BookingStatus, booking?: Booking) => void | Promise<void>;
+  onDeleteBooking: (id: string) => void | Promise<void>;
+  onResetSeedData: () => void | Promise<void>;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -126,6 +126,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAddDoctorOpen, setIsAddDoctorOpen] = useState(false);
   const [isAddLabOpen, setIsAddLabOpen] = useState(false);
   const [internalSuccessMsg, setInternalSuccessMsg] = useState('');
+  const [internalErrorMsg, setInternalErrorMsg] = useState('');
+  const [addFormError, setAddFormError] = useState('');
+  const [isExecutingConfirm, setIsExecutingConfirm] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    danger?: boolean;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   // New Doctor Form Fields
   const [newDocName, setNewDocName] = useState('');
@@ -280,19 +290,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleChangePassword = () => {
+    setInternalErrorMsg('');
     if (newPasswordInput.length < 4) {
-      alert('كلمة المرور يجب ألا تقل عن 4 خانات');
+      setInternalErrorMsg('كلمة المرور يجب ألا تقل عن 4 خانات');
+      setTimeout(() => setInternalErrorMsg(''), 6000);
       return;
     }
     localStorage.setItem(STORAGE_KEYS.ADMIN_PASSWORD, newPasswordInput);
-    alert('تم تغيير كلمة مرور لوحة الإدارة بنجاح');
+    setInternalSuccessMsg('تم تغيير كلمة مرور لوحة الإدارة بنجاح');
     setNewPasswordInput('');
+    setTimeout(() => setInternalSuccessMsg(''), 6000);
   };
 
   const handleAddDoctorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddFormError('');
     if (!newDocName.trim() || !newDocPhone.trim()) {
-      alert('يرجى كتابة اسم الطبيب ورقم هاتف العيادة');
+      setAddFormError('يرجى كتابة اسم الطبيب ورقم هاتف العيادة');
+      return;
+    }
+    const parsedPrice = Number(newDocPrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      setAddFormError('يرجى كتابة سعر كشف صحيح بالأرقام');
       return;
     }
     const cleanPhone = newDocPhone.trim().replace(/\D/g, '');
@@ -302,7 +321,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       name: newDocName.trim(),
       specialty: newDocSpecialty,
       phone1: cleanPhone,
-      price: Number(newDocPrice) || 250,
+      price: Math.round(parsedPrice),
       governorate: newDocGov,
       center: newDocCenter,
       address: newDocAddress.trim() || 'عيادة خاصة',
@@ -315,21 +334,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    if (onAddDoctorDirectly) {
-      await onAddDoctorDirectly(newDoctor);
+    try {
+      if (onAddDoctorDirectly) {
+        await onAddDoctorDirectly(newDoctor);
+      }
+      setIsAddDoctorOpen(false);
+      setInternalSuccessMsg(`تم تسجيل واعتماد الطبيب (${newDoctor.name}) بنجاح! كود التأكيد (OTP) الخاص به: ${otp}`);
+      setNewDocName('');
+      setNewDocPhone('');
+      setNewDocAddress('');
+      setTimeout(() => setInternalSuccessMsg(''), 10000);
+    } catch (err) {
+      console.error('Failed adding doctor from admin:', err);
+      setAddFormError('حدث خطأ أثناء حفظ بيانات الطبيب، يرجى المحاولة مرة أخرى.');
     }
-    setIsAddDoctorOpen(false);
-    setInternalSuccessMsg(`تم تسجيل واعتماد الطبيب (${newDoctor.name}) بنجاح! كود التأكيد (OTP) الخاص به: ${otp}`);
-    setNewDocName('');
-    setNewDocPhone('');
-    setNewDocAddress('');
-    setTimeout(() => setInternalSuccessMsg(''), 10000);
   };
 
   const handleAddLabSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddFormError('');
     if (!newLabName.trim() || !newLabPhone.trim()) {
-      alert('يرجى كتابة اسم المعمل ورقم الهاتف');
+      setAddFormError('يرجى كتابة اسم المعمل ورقم الهاتف');
+      return;
+    }
+    const parsedPrice = Number(newLabStartingPrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      setAddFormError('يرجى كتابة سعر مبدئي صحيح بالأرقام');
       return;
     }
     const cleanPhone = newLabPhone.trim().replace(/\D/g, '');
@@ -338,7 +368,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       id: `lab_${Date.now()}`,
       name: newLabName.trim(),
       phone: cleanPhone,
-      startingPrice: Number(newLabStartingPrice) || 100,
+      startingPrice: Math.round(parsedPrice),
       governorate: newLabGov,
       center: newLabCenter,
       address: newLabAddress.trim() || 'فرع المعمل الرئيسي',
@@ -348,22 +378,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       rating: 5.0,
       reviewsCount: 1,
       tests: [
-        { id: `t1_${Date.now()}`, name: 'صورة دم كاملة CBC', price: Number(newLabStartingPrice) || 120 },
+        { id: `t1_${Date.now()}`, name: 'صورة دم كاملة CBC', price: Math.round(parsedPrice) || 120 },
         { id: `t2_${Date.now()}`, name: 'تحليل سكر صائم وعشوائي', price: 60 },
         { id: `t3_${Date.now()}`, name: 'وظائف كبد وكلى شاملة', price: 180 }
       ],
       createdAt: new Date().toISOString()
     };
 
-    if (onAddLabDirectly) {
-      await onAddLabDirectly(newLab);
+    try {
+      if (onAddLabDirectly) {
+        await onAddLabDirectly(newLab);
+      }
+      setIsAddLabOpen(false);
+      setInternalSuccessMsg(`تم تسجيل واعتماد المعمل (${newLab.name}) بنجاح! كود التأكيد (OTP) الخاص به: ${otp}`);
+      setNewLabName('');
+      setNewLabPhone('');
+      setNewLabAddress('');
+      setTimeout(() => setInternalSuccessMsg(''), 10000);
+    } catch (err) {
+      console.error('Failed adding lab from admin:', err);
+      setAddFormError('حدث خطأ أثناء حفظ بيانات المعمل، يرجى المحاولة مرة أخرى.');
     }
-    setIsAddLabOpen(false);
-    setInternalSuccessMsg(`تم تسجيل واعتماد المعمل (${newLab.name}) بنجاح! كود التأكيد (OTP) الخاص به: ${otp}`);
-    setNewLabName('');
-    setNewLabPhone('');
-    setNewLabAddress('');
-    setTimeout(() => setInternalSuccessMsg(''), 10000);
   };
 
   // Metrics
@@ -591,6 +626,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <span>{internalSuccessMsg}</span>
                 </div>
                 <button onClick={() => setInternalSuccessMsg('')} className="text-emerald-700 hover:text-emerald-900">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Error alert banner */}
+            {internalErrorMsg && (
+              <div className="mx-4 mt-3 p-3 rounded-2xl bg-red-50 border border-red-300 text-red-800 text-xs font-bold flex items-center justify-between shrink-0 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{internalErrorMsg}</span>
+                </div>
+                <button onClick={() => setInternalErrorMsg('')} className="text-red-700 hover:text-red-900">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -844,7 +892,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => alert('تم تحديث الفحص التشخيصي للذكاء الاصطناعي بنجاح وفق أحدث بيانات قاعدة البيانات!')}
+                      onClick={() => {
+                        setInternalSuccessMsg('تم تحديث الفحص التشخيصي للذكاء الاصطناعي بنجاح وفق أحدث بيانات قاعدة البيانات!');
+                        setTimeout(() => setInternalSuccessMsg(''), 6000);
+                      }}
                       className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 self-start sm:self-auto"
                     >
                       <Sparkles className="w-4 h-4 text-amber-300" />
@@ -972,7 +1023,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => setIsAddDoctorOpen(true)}
+                        onClick={() => {
+                          setAddFormError('');
+                          setIsAddDoctorOpen(true);
+                        }}
                         className="py-2 px-3.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs shrink-0"
                       >
                         <Plus className="w-4 h-4" />
@@ -1117,12 +1171,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                               {onBlockDoctor && (
                                 <button
-                                  onClick={() => {
-                                    if (confirm(`هل أنت متأكد من رغبتك في حظر الطبيب (${doc.name})؟ سيتم إيقاف حسابه ومنع حجوزاته فوراً مع إمكانية فك الحظر لاحقاً.`)) {
-                                      onBlockDoctor(doc.id);
-                                    }
-                                  }}
-                                  className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-700 border border-slate-200 transition-colors"
+                                  type="button"
+                                  onClick={() =>
+                                    setPendingConfirm({
+                                      title: 'تأكيد حظر الطبيب',
+                                      message: `هل أنت متأكد من رغبتك في حظر الطبيب (${doc.name})؟ سيتم إيقاف حسابه ومنع حجوزاته فوراً مع إمكانية فك الحظر لاحقاً.`,
+                                      confirmLabel: 'تأكيد الحظر',
+                                      danger: true,
+                                      onConfirm: async () => {
+                                        await onBlockDoctor(doc.id);
+                                        setInternalSuccessMsg(`تم حظر الطبيب (${doc.name}) بنجاح.`);
+                                        setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                      }
+                                    })
+                                  }
+                                  className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-700 border border-slate-200 transition-colors cursor-pointer"
                                   title="حظر الطبيب"
                                 >
                                   <Ban className="w-4 h-4" />
@@ -1130,8 +1193,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               )}
 
                               <button
-                                onClick={() => onDeleteDoctor(doc.id)}
-                                className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
+                                type="button"
+                                onClick={() =>
+                                  setPendingConfirm({
+                                    title: 'تأكيد حذف الطبيب',
+                                    message: `هل أنت متأكد من حذف الطبيب (${doc.name}) نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+                                    confirmLabel: 'حذف نهائي',
+                                    danger: true,
+                                    onConfirm: async () => {
+                                      await onDeleteDoctor(doc.id);
+                                      setInternalSuccessMsg(`تم حذف الطبيب (${doc.name}) بنجاح.`);
+                                      setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                    }
+                                  })
+                                }
+                                className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors cursor-pointer"
                                 title="حذف الطبيب"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1162,7 +1238,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => setIsAddLabOpen(true)}
+                        onClick={() => {
+                          setAddFormError('');
+                          setIsAddLabOpen(true);
+                        }}
                         className="py-2 px-3.5 rounded-xl bg-cyan-700 hover:bg-cyan-800 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs shrink-0"
                       >
                         <Plus className="w-4 h-4" />
@@ -1327,12 +1406,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                               {onBlockLab && (
                                 <button
-                                  onClick={() => {
-                                    if (confirm(`هل أنت متأكد من رغبتك في حظر المعمل (${lab.name})؟ سيتم إيقاف حسابه ومنع حجوزاته فوراً مع إمكانية فك الحظر لاحقاً.`)) {
-                                      onBlockLab(lab.id);
-                                    }
-                                  }}
-                                  className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-700 border border-slate-200 transition-colors"
+                                  type="button"
+                                  onClick={() =>
+                                    setPendingConfirm({
+                                      title: 'تأكيد حظر المعمل',
+                                      message: `هل أنت متأكد من رغبتك في حظر المعمل (${lab.name})؟ سيتم إيقاف حسابه ومنع حجوزاته فوراً مع إمكانية فك الحظر لاحقاً.`,
+                                      confirmLabel: 'تأكيد الحظر',
+                                      danger: true,
+                                      onConfirm: async () => {
+                                        await onBlockLab(lab.id);
+                                        setInternalSuccessMsg(`تم حظر المعمل (${lab.name}) بنجاح.`);
+                                        setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                      }
+                                    })
+                                  }
+                                  className="p-2 rounded-xl hover:bg-amber-50 text-slate-400 hover:text-amber-700 border border-slate-200 transition-colors cursor-pointer"
                                   title="حظر المعمل"
                                 >
                                   <Ban className="w-4 h-4" />
@@ -1340,8 +1428,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               )}
 
                               <button
-                                onClick={() => onDeleteLab(lab.id)}
-                                className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
+                                type="button"
+                                onClick={() =>
+                                  setPendingConfirm({
+                                    title: 'تأكيد حذف المعمل',
+                                    message: `هل أنت متأكد من حذف المعمل (${lab.name}) نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+                                    confirmLabel: 'حذف نهائي',
+                                    danger: true,
+                                    onConfirm: async () => {
+                                      await onDeleteLab(lab.id);
+                                      setInternalSuccessMsg(`تم حذف المعمل (${lab.name}) بنجاح.`);
+                                      setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                    }
+                                  })
+                                }
+                                className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors cursor-pointer"
                                 title="حذف المعمل"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1569,12 +1670,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                                     {onUnblockDoctor && (
                                       <button
-                                        onClick={() => {
-                                          if (confirm(`هل أنت متأكد من فك الحظر عن الطبيب (${doc.name}) وإعادته للعمل في المنصة؟`)) {
-                                            onUnblockDoctor(doc.id);
-                                          }
-                                        }}
-                                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                        type="button"
+                                        onClick={() =>
+                                          setPendingConfirm({
+                                            title: 'تأكيد فك الحظر',
+                                            message: `هل أنت متأكد من فك الحظر عن الطبيب (${doc.name}) وإعادته للعمل في المنصة؟`,
+                                            confirmLabel: 'فك الحظر واستعادة الحساب',
+                                            danger: false,
+                                            onConfirm: async () => {
+                                              await onUnblockDoctor(doc.id);
+                                              setInternalSuccessMsg(`تم فك الحظر واستعادة حساب الطبيب (${doc.name}) بنجاح.`);
+                                              setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                            }
+                                          })
+                                        }
+                                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                                       >
                                         <UserCheck className="w-4 h-4" />
                                         <span>فك الحظر واستعادة الحساب</span>
@@ -1590,8 +1700,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <span>تعديل</span>
                                     </button>
                                     <button
-                                      onClick={() => onDeleteDoctor(doc.id)}
-                                      className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
+                                      type="button"
+                                      onClick={() =>
+                                        setPendingConfirm({
+                                          title: 'تأكيد الحذف النهائي',
+                                          message: `هل أنت متأكد من حذف الطبيب (${doc.name}) نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+                                          confirmLabel: 'حذف نهائي',
+                                          danger: true,
+                                          onConfirm: async () => {
+                                            await onDeleteDoctor(doc.id);
+                                            setInternalSuccessMsg(`تم حذف الطبيب (${doc.name}) نهائياً.`);
+                                            setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                          }
+                                        })
+                                      }
+                                      className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors cursor-pointer"
                                       title="حذف نهائي"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -1634,12 +1757,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                                     {onUnblockLab && (
                                       <button
-                                        onClick={() => {
-                                          if (confirm(`هل أنت متأكد من فك الحظر عن المعمل (${lab.name}) وإعادته للعمل في المنصة؟`)) {
-                                            onUnblockLab(lab.id);
-                                          }
-                                        }}
-                                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                        type="button"
+                                        onClick={() =>
+                                          setPendingConfirm({
+                                            title: 'تأكيد فك الحظر',
+                                            message: `هل أنت متأكد من فك الحظر عن المعمل (${lab.name}) وإعادته للعمل في المنصة؟`,
+                                            confirmLabel: 'فك الحظر واستعادة الحساب',
+                                            danger: false,
+                                            onConfirm: async () => {
+                                              await onUnblockLab(lab.id);
+                                              setInternalSuccessMsg(`تم فك الحظر واستعادة حساب المعمل (${lab.name}) بنجاح.`);
+                                              setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                            }
+                                          })
+                                        }
+                                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                                       >
                                         <UserCheck className="w-4 h-4" />
                                         <span>فك الحظر واستعادة الحساب</span>
@@ -1655,8 +1787,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <span>تعديل</span>
                                     </button>
                                     <button
-                                      onClick={() => onDeleteLab(lab.id)}
-                                      className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
+                                      type="button"
+                                      onClick={() =>
+                                        setPendingConfirm({
+                                          title: 'تأكيد الحذف النهائي',
+                                          message: `هل أنت متأكد من حذف المعمل (${lab.name}) نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+                                          confirmLabel: 'حذف نهائي',
+                                          danger: true,
+                                          onConfirm: async () => {
+                                            await onDeleteLab(lab.id);
+                                            setInternalSuccessMsg(`تم حذف المعمل (${lab.name}) نهائياً.`);
+                                            setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                          }
+                                        })
+                                      }
+                                      className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors cursor-pointer"
                                       title="حذف نهائي"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -1694,7 +1839,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   ) : (
                     <div className="space-y-2.5">
                       {filteredBookings.map((b) => {
-                        const comm = Math.round((b.price || 0) * 0.10);
+                        const comm = b.status === 'cancelled' ? 0 : Math.round((b.price || 0) * effectiveCommissionRate);
                         const net = (b.price || 0) - comm;
                         return (
                           <div
@@ -1719,7 +1864,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <span>•</span>
                                 <span className="text-[#0d9488] font-bold"><strong>السعر:</strong> {b.price} جنيه</span>
                                 <span>•</span>
-                                <span className="text-indigo-700 font-bold"><strong>نسبة التطبيق 10%:</strong> {comm} جنيه</span>
+                                <span className="text-indigo-700 font-bold"><strong>نسبة التطبيق {isCommissionEnabled ? `${commissionRate}%` : '0%'}:</strong> {comm} جنيه</span>
                                 <span>•</span>
                                 <span className="text-emerald-700 font-bold"><strong>صافي المقدم:</strong> {net} جنيه</span>
                               </div>
@@ -1759,8 +1904,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               </select>
 
                               <button
-                                onClick={() => onDeleteBooking(b.id)}
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                type="button"
+                                onClick={() =>
+                                  setPendingConfirm({
+                                    title: 'تأكيد حذف الحجز',
+                                    message: `هل أنت متأكد من حذف الحجز (${b.bookingCode}) للمريض (${b.patientName})؟`,
+                                    confirmLabel: 'حذف الحجز',
+                                    danger: true,
+                                    onConfirm: async () => {
+                                      await onDeleteBooking(b.id);
+                                      setInternalSuccessMsg(`تم حذف الحجز (${b.bookingCode}) بنجاح.`);
+                                      setTimeout(() => setInternalSuccessMsg(''), 6000);
+                                    }
+                                  })
+                                }
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
                                 title="حذف الحجز"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1810,13 +1968,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       سيؤدي هذا إلى إعادة تعيين قائمة الأطباء والمعامل والحجوزات إلى البيانات النموذجية الأصلية.
                     </p>
                     <button
-                      onClick={() => {
-                        if (confirm('هل أنت متأكد من رغبتك في إعادة تعيين البيانات النموذجية؟')) {
-                          onResetSeedData();
-                          alert('تمت استعادة البيانات الافتراضية بنجاح');
-                        }
-                      }}
-                      className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-2xs"
+                      type="button"
+                      onClick={() =>
+                        setPendingConfirm({
+                          title: 'تأكيد إعادة تعيين البيانات',
+                          message: 'هل أنت متأكد من رغبتك في إفراغ قاعدة البيانات وإعادة التعيين؟ سيتم حذف جميع الأطباء والمعامل والحجوزات.',
+                          confirmLabel: 'تأكيد التفريغ والإعادة',
+                          danger: true,
+                          onConfirm: async () => {
+                            await onResetSeedData();
+                            setInternalSuccessMsg('تم تفريغ وإعادة تعيين البيانات بنجاح');
+                            setTimeout(() => setInternalSuccessMsg(''), 6000);
+                          }
+                        })
+                      }
+                      className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-2xs cursor-pointer"
                     >
                       استعادة البيانات الأولية
                     </button>
@@ -1863,6 +2029,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <form onSubmit={handleAddDoctorSubmit} className="p-4 sm:p-6 space-y-4 text-right">
+              {addFormError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{addFormError}</span>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">اسم الطبيب الكامل *</label>
                 <input
@@ -2010,6 +2182,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <form onSubmit={handleAddLabSubmit} className="p-4 sm:p-6 space-y-4 text-right">
+              {addFormError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{addFormError}</span>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">اسم المعمل *</label>
                 <input
@@ -2414,6 +2592,85 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   إلغاء
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Non-blocking Admin Confirmation Dialog */}
+      {pendingConfirm && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150"
+          dir="rtl"
+          onClick={() => {
+            if (!isExecutingConfirm) setPendingConfirm(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-4 text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                  pendingConfirm.danger
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-emerald-100 text-emerald-600'
+                }`}
+              >
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-black text-base text-[#0f2a44]">
+                  {pendingConfirm.title}
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  {pendingConfirm.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isExecutingConfirm}
+                onClick={async () => {
+                  setIsExecutingConfirm(true);
+                  try {
+                    await pendingConfirm.onConfirm();
+                    setPendingConfirm(null);
+                  } catch (err) {
+                    console.error('Confirmation action failed:', err);
+                    setInternalErrorMsg('حدث خطأ أثناء تنفيذ العملية، يرجى المحاولة مرة أخرى.');
+                    setTimeout(() => setInternalErrorMsg(''), 6000);
+                    setPendingConfirm(null);
+                  } finally {
+                    setIsExecutingConfirm(false);
+                  }
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-white font-black text-xs sm:text-sm shadow-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer ${
+                  pendingConfirm.danger
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {isExecutingConfirm ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جارِ التنفيذ...</span>
+                  </>
+                ) : (
+                  <span>{pendingConfirm.confirmLabel}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={isExecutingConfirm}
+                onClick={() => setPendingConfirm(null)}
+                className="py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+              >
+                إلغاء
+              </button>
             </div>
           </div>
         </div>

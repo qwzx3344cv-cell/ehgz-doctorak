@@ -136,7 +136,10 @@ async function prepareImageForUpload(
             { maxDim: 1440, quality: 0.9, mime: 'image/webp' },
             { maxDim: 1440, quality: 0.85, mime: 'image/jpeg' },
             { maxDim: 1280, quality: 0.8, mime: 'image/jpeg' },
-            { maxDim: 1080, quality: 0.74, mime: 'image/jpeg' }
+            { maxDim: 1080, quality: 0.74, mime: 'image/jpeg' },
+            { maxDim: 960, quality: 0.68, mime: 'image/webp' },
+            { maxDim: 800, quality: 0.62, mime: 'image/jpeg' },
+            { maxDim: 640, quality: 0.55, mime: 'image/jpeg' }
           ];
 
           for (const attempt of attempts) {
@@ -247,6 +250,65 @@ export async function uploadLabImageToStorage(
   return uploadProviderImageToStorage('labs', labId, 'lab', file);
 }
 
+// Upload medical record attachment (image or PDF) to Firebase Storage with safe fallback below Firestore 1MB limit
+export async function uploadMedicalRecordFileToStorage(
+  recordId: string,
+  file: File
+): Promise<string> {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    const filePath = `medical_records/${recordId}/doc_${Date.now()}.pdf`;
+    const storageRef = ref(storage, filePath);
+    try {
+      const uploadTask = (async () => {
+        const snapshot = await uploadBytes(storageRef, file, {
+          contentType: 'application/pdf'
+        });
+        return await getDownloadURL(snapshot.ref);
+      })();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firebase Storage PDF upload timed out')), 15000)
+      );
+      return await Promise.race([uploadTask, timeoutPromise]);
+    } catch (err) {
+      console.warn('[Firebase Storage] PDF upload failed:', err);
+      if (file.size <= 680 * 1024) {
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(new Error('فشل قراءة ملف PDF'));
+          reader.readAsDataURL(file);
+        });
+      }
+      throw new Error('ملف الـ PDF أكبر من الحد المسموح للحفظ الاحتياطي (680 كيلوبايت)');
+    }
+  }
+
+  const { uploadBlob, contentType, ext, fallbackDataUrl } = await prepareImageForUpload(file);
+  const filePath = `medical_records/${recordId}/img_${Date.now()}.${ext}`;
+  const storageRef = ref(storage, filePath);
+
+  try {
+    const uploadTask = (async () => {
+      const snapshot = await uploadBytes(storageRef, uploadBlob, {
+        contentType: contentType || 'image/jpeg'
+      });
+      return await getDownloadURL(snapshot.ref);
+    })();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase Storage image upload timed out')), 15000)
+    );
+    return await Promise.race([uploadTask, timeoutPromise]);
+  } catch (err) {
+    console.warn('[Firebase Storage] Medical image upload failed:', err);
+    if (fallbackDataUrl && fallbackDataUrl.length <= 450000) {
+      return fallbackDataUrl;
+    }
+    throw err;
+  }
+}
+
 // Error Handling per Skill requirements
 export enum OperationType {
   CREATE = 'create',
@@ -354,23 +416,23 @@ export async function saveDoctorToFirestore(doctor: Doctor): Promise<void> {
     const resolvedClinicImage = cleanClinImage || cleanClinPhoto || '';
 
     const dataToSave = {
-      name: doctor.name,
-      specialty: doctor.specialty,
-      phone1: doctor.phone1,
-      phone2: doctor.phone2 || '',
-      address: doctor.address,
-      governorate: doctor.governorate || '',
-      city: doctor.city || doctor.center || '',
-      center: doctor.center || doctor.city || '',
-      price: Number(doctor.price),
+      name: String(doctor.name || '').trim().slice(0, 100),
+      specialty: String(doctor.specialty || '').trim().slice(0, 100),
+      phone1: String(doctor.phone1 || '').trim().slice(0, 30),
+      phone2: String(doctor.phone2 || '').trim().slice(0, 30),
+      address: String(doctor.address || '').trim().slice(0, 300),
+      governorate: String(doctor.governorate || '').trim().slice(0, 50),
+      city: String(doctor.city || doctor.center || '').trim().slice(0, 50),
+      center: String(doctor.center || doctor.city || '').trim().slice(0, 50),
+      price: Number.isFinite(Number(doctor.price)) ? Number(doctor.price) : 0,
       clinicPhoto: resolvedClinicImage,
       clinic_image: resolvedClinicImage,
-      workingHours: doctor.workingHours || '',
+      workingHours: String(doctor.workingHours || '').trim().slice(0, 150),
       isDemo: false,
       status: doctor.status,
-      otpCode: doctor.otpCode || '',
+      otpCode: String(doctor.otpCode || '').trim().slice(0, 10),
       isVerified: !!doctor.isVerified,
-      googleMapsUrl: doctor.googleMapsUrl || '',
+      googleMapsUrl: String(doctor.googleMapsUrl || '').trim(),
       createdAt: doctor.createdAt || new Date().toISOString()
     };
     await setDoc(docRef, dataToSave, { merge: true });
@@ -403,7 +465,24 @@ export async function updateDoctorInFirestore(
   const path = 'doctors';
   try {
     const docRef = doc(db, path, id);
-    await setDoc(docRef, updates, { merge: true });
+    const sanitizedUpdates: Record<string, unknown> = { ...updates };
+    if ('clinic_image' in updates || 'clinicPhoto' in updates) {
+      const cleanImg =
+        sanitizeClinicImageUrl(updates.clinic_image) ||
+        sanitizeClinicImageUrl(updates.clinicPhoto);
+      sanitizedUpdates.clinic_image = cleanImg;
+      sanitizedUpdates.clinicPhoto = cleanImg;
+    }
+    if (typeof updates.name === 'string') {
+      sanitizedUpdates.name = updates.name.trim().slice(0, 100);
+    }
+    if (typeof updates.phone1 === 'string') {
+      sanitizedUpdates.phone1 = updates.phone1.trim().slice(0, 30);
+    }
+    if (updates.price !== undefined) {
+      sanitizedUpdates.price = Number.isFinite(Number(updates.price)) ? Number(updates.price) : 0;
+    }
+    await setDoc(docRef, sanitizedUpdates, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${path}/${id}`);
   }
@@ -477,21 +556,21 @@ export async function saveLabToFirestore(lab: Lab): Promise<void> {
     const docRef = doc(db, path, lab.id);
     const cleanLabPhoto = sanitizeClinicImageUrl(lab.labPhoto);
     const dataToSave = {
-      name: lab.name,
-      phone: lab.phone,
-      address: lab.address,
-      governorate: lab.governorate || '',
-      city: lab.city || lab.center || '',
-      center: lab.center || lab.city || '',
+      name: String(lab.name || '').trim().slice(0, 100),
+      phone: String(lab.phone || '').trim().slice(0, 30),
+      address: String(lab.address || '').trim().slice(0, 300),
+      governorate: String(lab.governorate || '').trim().slice(0, 50),
+      city: String(lab.city || lab.center || '').trim().slice(0, 50),
+      center: String(lab.center || lab.city || '').trim().slice(0, 50),
       labPhoto: cleanLabPhoto || '',
-      tests: lab.tests || [],
-      startingPrice: Number(lab.startingPrice),
-      workingHours: lab.workingHours || '',
+      tests: Array.isArray(lab.tests) ? lab.tests : [],
+      startingPrice: Number.isFinite(Number(lab.startingPrice)) ? Number(lab.startingPrice) : 0,
+      workingHours: String(lab.workingHours || '').trim().slice(0, 150),
       isDemo: false,
       status: lab.status,
-      otpCode: lab.otpCode || '',
+      otpCode: String(lab.otpCode || '').trim().slice(0, 10),
       isVerified: !!lab.isVerified,
-      googleMapsUrl: lab.googleMapsUrl || '',
+      googleMapsUrl: String(lab.googleMapsUrl || '').trim(),
       createdAt: lab.createdAt || new Date().toISOString()
     };
     await setDoc(docRef, dataToSave, { merge: true });
@@ -524,7 +603,22 @@ export async function updateLabInFirestore(
   const path = 'labs';
   try {
     const docRef = doc(db, path, id);
-    await setDoc(docRef, updates, { merge: true });
+    const sanitizedUpdates: Record<string, unknown> = { ...updates };
+    if ('labPhoto' in updates) {
+      sanitizedUpdates.labPhoto = sanitizeClinicImageUrl(updates.labPhoto);
+    }
+    if (typeof updates.name === 'string') {
+      sanitizedUpdates.name = updates.name.trim().slice(0, 100);
+    }
+    if (typeof updates.phone === 'string') {
+      sanitizedUpdates.phone = updates.phone.trim().slice(0, 30);
+    }
+    if (updates.startingPrice !== undefined) {
+      sanitizedUpdates.startingPrice = Number.isFinite(Number(updates.startingPrice))
+        ? Number(updates.startingPrice)
+        : 0;
+    }
+    await setDoc(docRef, sanitizedUpdates, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${path}/${id}`);
   }
@@ -559,22 +653,29 @@ export async function sendProviderApprovalWithOTP(
   const phone = providerType === 'doctor' ? (provider as Doctor).phone1 : (provider as Lab).phone;
   const officialMessage = `تم قبول انضمامك بنجاح إلى تطبيق (احجز عند دكتورك)! كود التأكيد الخاص بك هو: [${otpCode}]. نتمنى لك التوفيق والنجاح الدائم في خدمة مرضانا.`;
 
-  // 1. Create notification in Firestore
-  await createNotificationInFirestore({
-    title: `🎉 تم قبول انضمامك بنجاح إلى تطبيق (احجز عند دكتورك)!`,
-    body: officialMessage,
-    recipientType: providerType,
-    recipientId: provider.id,
-    recipientPhone: phone,
-    type: 'test'
-  });
+  // Non-blocking notification + push dispatch so approval status save never fails
+  try {
+    await createNotificationInFirestore({
+      title: `🎉 تم قبول انضمامك بنجاح إلى تطبيق (احجز عند دكتورك)!`,
+      body: officialMessage,
+      recipientType: providerType,
+      recipientId: provider.id,
+      recipientPhone: phone,
+      type: 'test'
+    });
+  } catch (err) {
+    console.warn('Could not log approval notification:', err);
+  }
 
-  // 2. Trigger audio chime and device push alert
-  await triggerDevicePushNotification(
-    `🎉 تم قبول انضمامك بنجاح كـ ${providerType === 'doctor' ? 'طبيب' : 'معمل'}!`,
-    officialMessage,
-    { otpCode, providerId: provider.id, providerType }
-  );
+  try {
+    await triggerDevicePushNotification(
+      `🎉 تم قبول انضمامك بنجاح كـ ${providerType === 'doctor' ? 'طبيب' : 'معمل'}!`,
+      officialMessage,
+      { otpCode, providerId: provider.id, providerType }
+    );
+  } catch (err) {
+    console.warn('Could not trigger approval push notification:', err);
+  }
 }
 
 // ----------------------------------------------------
@@ -672,25 +773,29 @@ export async function saveBookingToFirestore(booking: Booking): Promise<void> {
   try {
     const docRef = doc(db, path, booking.id);
     const dataToSave = {
-      bookingCode: booking.bookingCode,
+      bookingCode: String(booking.bookingCode || '').trim().slice(0, 30),
       providerType: booking.providerType,
-      providerId: booking.providerId,
-      providerName: booking.providerName,
-      providerSpecialtyOrType: booking.providerSpecialtyOrType,
-      providerAddress: booking.providerAddress,
-      patientName: booking.patientName,
-      patientPhone: booking.patientPhone,
-      appointmentDate: booking.appointmentDate,
-      appointmentTime: booking.appointmentTime || '',
-      selectedTestName: booking.selectedTestName || '',
-      price: Number(booking.price),
-      notes: booking.notes || '',
+      providerId: String(booking.providerId || '').trim().slice(0, 100),
+      providerName: String(booking.providerName || '').trim().slice(0, 100),
+      providerSpecialtyOrType: String(booking.providerSpecialtyOrType || '').trim().slice(0, 100),
+      providerAddress: String(booking.providerAddress || '').trim().slice(0, 300),
+      patientName: String(booking.patientName || '').trim().slice(0, 100),
+      patientPhone: String(booking.patientPhone || '').trim().slice(0, 30),
+      appointmentDate: String(booking.appointmentDate || '').trim().slice(0, 30),
+      appointmentTime: String(booking.appointmentTime || '').trim().slice(0, 50),
+      selectedTestName: String(booking.selectedTestName || '').trim().slice(0, 100),
+      price: Number.isFinite(Number(booking.price)) ? Number(booking.price) : 0,
+      notes: String(booking.notes || '').trim().slice(0, 500),
       status: booking.status,
       createdAt: booking.createdAt || new Date().toISOString()
     };
     await setDoc(docRef, dataToSave, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${path}/${booking.id}`);
+  }
 
-    // AUTOMATIC PUSH NOTIFICATION: Trigger push alert to Doctor or Lab
+  // AUTOMATIC PUSH NOTIFICATION: Non-blocking trigger to Doctor or Lab
+  try {
     const providerLabel = booking.providerType === 'doctor' ? 'عيادتك' : 'معملك';
     const testInfo = booking.selectedTestName ? ` (تحليل: ${booking.selectedTestName})` : '';
     await createNotificationInFirestore({
@@ -702,8 +807,8 @@ export async function saveBookingToFirestore(booking: Booking): Promise<void> {
       bookingCode: booking.bookingCode,
       type: 'new_booking'
     });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `${path}/${booking.id}`);
+  } catch (notifError) {
+    console.warn('Could not send new booking notification:', notifError);
   }
 }
 
@@ -716,9 +821,13 @@ export async function updateBookingStatusInFirestore(
   try {
     const docRef = doc(db, path, id);
     await setDoc(docRef, { status }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${path}/${id}`);
+  }
 
-    // AUTOMATIC PUSH NOTIFICATION TO PATIENT:
-    if (bookingDetails) {
+  // AUTOMATIC PUSH NOTIFICATION TO PATIENT (Non-blocking)
+  if (bookingDetails) {
+    try {
       if (status === 'confirmed') {
         await createNotificationInFirestore({
           title: `✅ تم قبول وتأكيد حجزك بنجاح!`,
@@ -740,9 +849,9 @@ export async function updateBookingStatusInFirestore(
           type: 'booking_cancelled'
         });
       }
+    } catch (notifError) {
+      console.warn('Could not send booking status notification:', notifError);
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${path}/${id}`);
   }
 }
 
@@ -798,34 +907,39 @@ export function subscribeReviews(
 
 export async function saveReviewToFirestore(review: Review): Promise<void> {
   const path = 'reviews';
+  const clampedRating = Math.min(5, Math.max(1, Number(review.rating) || 5));
   try {
     const docRef = doc(db, path, review.id);
     const dataToSave = {
-      providerId: review.providerId,
+      providerId: String(review.providerId || '').trim().slice(0, 100),
       providerType: review.providerType,
-      providerName: review.providerName,
-      patientName: review.patientName,
-      patientPhone: review.patientPhone || '',
-      bookingId: review.bookingId || '',
-      bookingCode: review.bookingCode || '',
-      rating: Number(review.rating),
-      comment: review.comment || '',
+      providerName: String(review.providerName || '').trim().slice(0, 100),
+      patientName: String(review.patientName || '').trim().slice(0, 100),
+      patientPhone: String(review.patientPhone || '').trim().slice(0, 30),
+      bookingId: String(review.bookingId || '').trim().slice(0, 100),
+      bookingCode: String(review.bookingCode || '').trim().slice(0, 30),
+      rating: clampedRating,
+      comment: String(review.comment || '').trim().slice(0, 1000),
       createdAt: review.createdAt || new Date().toISOString()
     };
     await setDoc(docRef, dataToSave, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${path}/${review.id}`);
+  }
 
-    // Send instant notification about new review
-    const starsText = '⭐'.repeat(Math.min(Math.max(review.rating, 1), 5));
+  // Send instant notification about new review (Non-blocking)
+  try {
+    const starsText = '⭐'.repeat(clampedRating);
     await createNotificationInFirestore({
       title: `🌟 تقييم جديد (${starsText}): ${review.providerName}`,
-      body: `قام المريض ${review.patientName} بتقييم التجربة بـ ${review.rating} نجوم: "${review.comment.substring(0, 100)}"`,
+      body: `قام المريض ${review.patientName} بتقييم التجربة بـ ${clampedRating} نجوم: "${(review.comment || '').substring(0, 100)}"`,
       recipientType: review.providerType,
       recipientId: review.providerId,
       bookingCode: review.bookingCode,
       type: 'test'
     });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `${path}/${review.id}`);
+  } catch (notifError) {
+    console.warn('Could not send review notification:', notifError);
   }
 }
 
@@ -944,13 +1058,13 @@ export async function createNotificationInFirestore(item: {
     const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const docRef = doc(db, path, notifId);
     const dataToSave = {
-      title: item.title,
-      body: item.body,
+      title: String(item.title || '').trim().slice(0, 150),
+      body: String(item.body || '').trim().slice(0, 500),
       recipientType: item.recipientType,
-      recipientId: item.recipientId || '',
-      recipientPhone: item.recipientPhone || '',
-      bookingId: item.bookingId || '',
-      bookingCode: item.bookingCode || '',
+      recipientId: String(item.recipientId || '').trim().slice(0, 100),
+      recipientPhone: String(item.recipientPhone || '').trim().slice(0, 30),
+      bookingId: String(item.bookingId || '').trim().slice(0, 100),
+      bookingCode: String(item.bookingCode || '').trim().slice(0, 30),
       type: item.type,
       isRead: false,
       createdAt: new Date().toISOString()
@@ -1221,14 +1335,18 @@ export async function saveMedicalRecordToFirestore(rec: MedicalRecordAttachment)
       createdAt: rec.createdAt || new Date().toISOString()
     };
     await setDoc(docRef, dataToSave, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${path}/${rec.id}`);
+  }
 
-    // Send push notification
+  try {
+    // Send push notification (Non-blocking)
     await triggerDevicePushNotification(
       '📎 تم حفظ المستند الطبي بنجاح',
       `تمت إضافة "${rec.title}" إلى سجلك الطبي الإلكتروني.`
     );
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `${path}/${rec.id}`);
+  } catch (notifError) {
+    console.warn('Could not send medical record notification:', notifError);
   }
 }
 

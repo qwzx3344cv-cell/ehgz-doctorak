@@ -13,7 +13,8 @@ import {
   ChevronDown,
   Stethoscope,
   FlaskConical,
-  Navigation
+  Navigation,
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Doctor, Lab, LabTestItem, Booking } from '../types';
@@ -25,7 +26,7 @@ interface BookingModalProps {
   providerType: 'doctor' | 'lab';
   initialTest?: LabTestItem;
   onClose: () => void;
-  onBookingSuccess: (booking: Booking) => void;
+  onBookingSuccess: (booking: Booking) => void | Promise<void>;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
@@ -43,12 +44,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   });
-  const [timeSlot, setTimeSlot] = useState('06:00 م - 07:00 م');
+  const [timeSlot, setTimeSlot] = useState('05:00 م - 07:00 م');
   const [selectedTest, setSelectedTest] = useState<string>(
     initialTest ? initialTest.name : ''
   );
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
 
   if (!provider) return null;
@@ -75,10 +77,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     provider.googleMapsUrl
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setSubmitError('');
+
     if (!patientName.trim() || !patientPhone.trim()) {
-      alert('من فضلك أدخل اسم المريض ورقم الهاتف');
+      setSubmitError('من فضلك أدخل اسم المريض ورقم الهاتف');
       return;
     }
 
@@ -104,10 +109,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await onBookingSuccess(newBooking);
       setConfirmedBooking(newBooking);
-      onBookingSuccess(newBooking);
 
       // Trigger Confetti!
       try {
@@ -119,7 +123,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       } catch (err) {
         console.log(err);
       }
-    }, 400);
+    } catch (err) {
+      console.error('Booking submit failed:', err);
+      setSubmitError('حدث خطأ أثناء تسجيل الحجز في قاعدة البيانات، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handlePrint = () => {
@@ -406,6 +415,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <span className="text-slate-600 dark:text-slate-300">الدفع يتم مباشرة في العيادة / المعمل:</span>
               <span className="font-extrabold text-[#0d9488] dark:text-teal-400 text-sm">{currentPrice} جنيه</span>
             </div>
+
+            {submitError && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
             {/* Submit Button */}
             <button

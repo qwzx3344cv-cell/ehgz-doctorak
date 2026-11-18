@@ -30,6 +30,7 @@ export const GeminiChatModal: React.FC<GeminiChatModalProps> = ({
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -114,16 +115,15 @@ export const GeminiChatModal: React.FC<GeminiChatModalProps> = ({
   };
 
   const handleClearChat = () => {
-    if (confirm('هل ترغب في بدء محادثة جديدة ومسح الرسائل السابقة؟')) {
-      setMessages([
-        {
-          id: 'welcome-reset',
-          role: 'assistant',
-          text: 'تم بدء محادثة جديدة! كيف يمكنني مساعدتك طبياً أو توجيهك في الحجز اليوم؟',
-          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    }
+    setMessages([
+      {
+        id: 'welcome-reset',
+        role: 'assistant',
+        text: 'تم بدء محادثة جديدة! كيف يمكنني مساعدتك طبياً أو توجيهك في الحجز اليوم؟',
+        timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setConfirmClear(false);
   };
 
   if (!isOpen) return null;
@@ -154,13 +154,33 @@ export const GeminiChatModal: React.FC<GeminiChatModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleClearChat}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
-              title="مسح المحادثة والبدء من جديد"
-            >
-              <Trash2 className="w-4 h-4 text-slate-300" />
-            </button>
+            {confirmClear ? (
+              <div className="flex items-center gap-1 bg-white/15 px-2 py-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={handleClearChat}
+                  className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white transition-colors cursor-pointer"
+                >
+                  تأكيد المسح
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(false)}
+                  className="text-[11px] font-semibold px-1.5 py-0.5 rounded-lg text-slate-200 hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+                title="مسح المحادثة والبدء من جديد"
+              >
+                <Trash2 className="w-4 h-4 text-slate-300" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/80 text-white transition-all cursor-pointer"

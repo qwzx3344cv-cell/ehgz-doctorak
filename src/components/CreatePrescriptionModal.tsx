@@ -49,9 +49,10 @@ export const CreatePrescriptionModal: React.FC<CreatePrescriptionModalProps> = (
 
   const handleRemoveMedicine = (id: string) => {
     if (medicines.length <= 1) {
-      alert('يجب الإبقاء على دواء واحد على الأقل في الروشتة');
+      setErrorMsg('يجب الإبقاء على دواء واحد على الأقل في الروشتة');
       return;
     }
+    setErrorMsg('');
     setMedicines(medicines.filter((m) => m.id !== id));
   };
 

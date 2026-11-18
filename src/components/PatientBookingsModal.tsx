@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, CalendarCheck, Clock, MapPin, Printer, Stethoscope, FlaskConical, Star, Navigation, Pill, FileText } from 'lucide-react';
 import { Booking, EPrescription } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
@@ -24,6 +24,8 @@ export const PatientBookingsModal: React.FC<PatientBookingsModalProps> = ({
   onViewPrescription,
   onOpenMedicalRecords
 }) => {
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
   return (
@@ -219,16 +221,35 @@ export const PatientBookingsModal: React.FC<PatientBookingsModalProps> = ({
                     </button>
 
                     {booking.status !== 'cancelled' && (
-                      <button
-                        onClick={() => {
-                          if (confirm('هل ترغب حقاً في إلغاء هذا الحجز؟')) {
-                            onCancelBooking(booking.id);
-                          }
-                        }}
-                        className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 font-semibold p-1 transition-colors active:scale-95"
-                      >
-                        إلغاء الموعد
-                      </button>
+                      confirmCancelId === booking.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onCancelBooking(booking.id);
+                              setConfirmCancelId(null);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors active:scale-95"
+                          >
+                            تأكيد الإلغاء
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmCancelId(null)}
+                            className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors"
+                          >
+                            تراجع
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmCancelId(booking.id)}
+                          className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 font-semibold p-1 transition-colors active:scale-95"
+                        >
+                          إلغاء الموعد
+                        </button>
+                      )
                     )}
                   </div>
                 </div>

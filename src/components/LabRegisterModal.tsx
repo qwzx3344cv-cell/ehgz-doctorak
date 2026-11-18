@@ -86,8 +86,9 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
   };
 
   const handleAddTest = () => {
-    if (!newTestName.trim() || !newTestPrice) {
-      alert('يرجى إدخال اسم التحليل وسعره');
+    setSubmitError('');
+    if (!newTestName.trim() || !Number.isFinite(Number(newTestPrice)) || Number(newTestPrice) <= 0) {
+      setSubmitError('يرجى إدخال اسم التحليل وسعره بالأرقام');
       return;
     }
     const newTest: LabTestItem = {
@@ -109,7 +110,7 @@ export const LabRegisterModal: React.FC<LabRegisterModalProps> = ({
     if (isSubmitting) return;
 
     if (!name.trim() || !phone.trim() || !address.trim()) {
-      alert('من فضلك أكمل الحقول المطلوبة');
+      setSubmitError('من فضلك أكمل الحقول المطلوبة');
       return;
     }
 
