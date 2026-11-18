@@ -79,6 +79,11 @@ export const PWAInstallGuideModal: React.FC<PWAInstallGuideModalProps> = ({
 
             {isIOS ? (
               <div className="space-y-3 text-xs sm:text-sm">
+                <div className="p-3.5 rounded-2xl bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-center">
+                  <p className="font-black text-sm text-[#0f2a44] dark:text-white">
+                    دوس مشاركة <span className="inline-block px-1.5 py-0.5 mx-0.5 bg-white dark:bg-slate-800 rounded border border-teal-200 dark:border-teal-700">⎋</span> وبعدين أضف إلى الشاشة الرئيسية
+                  </p>
+                </div>
                 <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                   <div className="w-8 h-8 rounded-xl bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 flex items-center justify-center shrink-0 font-bold">
                     1

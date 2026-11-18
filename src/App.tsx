@@ -331,12 +331,35 @@ export default function App() {
 
   // Navigation handlers
   const handleNavigateSection = (section: 'doctors' | 'labs') => {
-    setActiveSection(section);
-    if (section === 'doctors' && doctorsSectionRef.current) {
-      doctorsSectionRef.current.scrollIntoView({ behavior: 'smooth' });
-    } else if (section === 'labs' && labsSectionRef.current) {
-      labsSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (providerTypeView !== 'all' && providerTypeView !== section) {
+      setProviderTypeView('all');
     }
+    setActiveSection(section);
+    setTimeout(() => {
+      if (section === 'doctors' && doctorsSectionRef.current) {
+        doctorsSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'labs' && labsSectionRef.current) {
+        labsSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 60);
+  };
+
+  const handleGoToDoctorsOnly = () => {
+    setProviderTypeView('doctors');
+    setActiveFilter('all');
+    setActiveSection('doctors');
+    setTimeout(() => {
+      doctorsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
+  };
+
+  const handleGoToLabsOnly = () => {
+    setProviderTypeView('labs');
+    setActiveFilter('all');
+    setActiveSection('labs');
+    setTimeout(() => {
+      labsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
   };
 
   const scrollToSearch = () => {
@@ -884,6 +907,24 @@ export default function App() {
     setPwaGuideModalOpen(true);
   };
 
+  const handleDownloadAppClick = async () => {
+    if (isIOS) {
+      setPwaGuidePlatform('ios');
+      setPwaGuideModalOpen(true);
+      return;
+    }
+    if (isInstallable) {
+      const accepted = await promptInstall();
+      if (!accepted) {
+        setPwaGuidePlatform('android');
+        setPwaGuideModalOpen(true);
+      }
+      return;
+    }
+    setPwaGuidePlatform('android');
+    setPwaGuideModalOpen(true);
+  };
+
   const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
 
   return (
@@ -957,8 +998,11 @@ export default function App() {
         {/* Permanent Full-Width App Cover Banner */}
         <HeroBanner
           onExploreClick={scrollToSearch}
+          onGoToDoctorsOnly={handleGoToDoctorsOnly}
+          onGoToLabsOnly={handleGoToLabsOnly}
           onOpenDoctorModal={() => setDoctorModalOpen(true)}
           onOpenLabModal={() => setLabModalOpen(true)}
+          onDownloadAppClick={handleDownloadAppClick}
         />
 
         {/* 3D Medical Scene & Dual AI Command Center */}

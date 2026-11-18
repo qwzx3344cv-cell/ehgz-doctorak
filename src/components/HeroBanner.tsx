@@ -7,19 +7,26 @@ import {
   Stethoscope,
   FlaskConical,
   Building2,
+  ArrowDown,
   X
 } from 'lucide-react';
 
 interface HeroBannerProps {
   onExploreClick: () => void;
+  onGoToDoctorsOnly: () => void;
+  onGoToLabsOnly: () => void;
   onOpenDoctorModal: () => void;
   onOpenLabModal: () => void;
+  onDownloadAppClick: () => void;
 }
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({
   onExploreClick,
+  onGoToDoctorsOnly,
+  onGoToLabsOnly,
   onOpenDoctorModal,
-  onOpenLabModal
+  onOpenLabModal,
+  onDownloadAppClick
 }) => {
   const [showRegisterChoice, setShowRegisterChoice] = useState(false);
 
@@ -37,9 +44,10 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
         />
       </div>
 
-      {/* Two Primary Action Buttons Directly Under the Cover Image */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
+      {/* Stacked Primary Action Buttons Directly Under the Cover Image */}
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-2">
+        <div className="flex flex-col gap-3.5">
+          {/* 1. أنا مريض */}
           <button
             type="button"
             onClick={onExploreClick}
@@ -49,6 +57,27 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             <span>أنا مريض</span>
           </button>
 
+          {/* 2. احجز دكتورك (أخضر فاتح - صفحة الدكاترة فقط) */}
+          <button
+            type="button"
+            onClick={onGoToDoctorsOnly}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl bg-green-500 hover:bg-green-600 text-white font-black text-base sm:text-lg shadow-lg shadow-green-500/25 transition-all active:scale-[0.98] cursor-pointer"
+          >
+            <Stethoscope className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+            <span>احجز دكتورك</span>
+          </button>
+
+          {/* 3. احجز في معمل تحليل (أزرق - صفحة المعامل فقط) */}
+          <button
+            type="button"
+            onClick={onGoToLabsOnly}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-base sm:text-lg shadow-lg shadow-blue-600/25 transition-all active:scale-[0.98] cursor-pointer"
+          >
+            <FlaskConical className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+            <span>احجز في معمل تحليل</span>
+          </button>
+
+          {/* 4. تسجيل عيادة / معمل */}
           <button
             type="button"
             onClick={() => setShowRegisterChoice(true)}
@@ -56,6 +85,18 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           >
             <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-teal-400 shrink-0" />
             <span>تسجيل عيادة / معمل</span>
+          </button>
+
+          {/* 5. تحميل التطبيق (أسود مع علامة تحميل ↓) */}
+          <button
+            type="button"
+            onClick={onDownloadAppClick}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl bg-black hover:bg-neutral-900 text-white font-black text-base sm:text-lg shadow-lg shadow-black/30 border border-neutral-800 transition-all active:scale-[0.98] cursor-pointer"
+          >
+            <span className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+              <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.5]" />
+            </span>
+            <span>تحميل التطبيق</span>
           </button>
         </div>
       </div>
