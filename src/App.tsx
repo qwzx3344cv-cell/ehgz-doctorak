@@ -954,11 +954,11 @@ export default function App() {
 
       <main className="flex-1">
         
-        {/* Hero Banner with Doctor holding phone image and 3 benefit badges */}
+        {/* Permanent Full-Width App Cover Banner */}
         <HeroBanner
           onExploreClick={scrollToSearch}
           onOpenDoctorModal={() => setDoctorModalOpen(true)}
-          onTriggerInstall={handleAndroidInstallClick}
+          onOpenLabModal={() => setLabModalOpen(true)}
         />
 
         {/* 3D Medical Scene & Dual AI Command Center */}
