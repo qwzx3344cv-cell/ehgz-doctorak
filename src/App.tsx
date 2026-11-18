@@ -491,6 +491,7 @@ export default function App() {
       await updateDoctorInFirestore(id, updates);
     } catch (e) {
       console.error('Failed to update doctor profile:', e);
+      throw e;
     }
   };
 
@@ -502,6 +503,7 @@ export default function App() {
       await updateLabInFirestore(id, updates);
     } catch (e) {
       console.error('Failed to update lab profile:', e);
+      throw e;
     }
   };
 
@@ -1389,6 +1391,8 @@ export default function App() {
           onUnblockLab={handleUnblockLab}
           onAddDoctorDirectly={handleAddDoctorDirectly}
           onAddLabDirectly={handleAddLabDirectly}
+          onUpdateDoctor={handleUpdateDoctorProfile}
+          onUpdateLab={handleUpdateLabProfile}
           onUpdateBookingStatus={handleUpdateBookingStatus}
           onDeleteBooking={handleDeleteBooking}
           onResetSeedData={handleResetSeedData}

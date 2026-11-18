@@ -33,14 +33,22 @@ import {
   UserCheck,
   ShieldAlert,
   PlusCircle,
-  Plus
+  Plus,
+  Edit3,
+  Image as ImageIcon,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { Doctor, Lab, Booking, BookingStatus, LabTestItem } from '../types';
 import { STORAGE_KEYS, DEFAULT_ADMIN_PASSWORD, SPECIALTIES } from '../constants';
 import { FinancialReports } from './FinancialReports';
 import { ProviderStatementModal } from './ProviderStatementModal';
 import { EGYPT_GOVERNORATES, getCentersForGovernorate } from '../data/egyptLocations';
-import { sanitizeClinicImageUrl } from '../firebase';
+import {
+  sanitizeClinicImageUrl,
+  uploadDoctorImageToStorage,
+  uploadLabImageToStorage
+} from '../firebase';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -63,6 +71,8 @@ interface AdminPanelProps {
   onUnblockLab?: (id: string) => void;
   onAddDoctorDirectly?: (doctor: Doctor) => Promise<void>;
   onAddLabDirectly?: (lab: Lab) => Promise<void>;
+  onUpdateDoctor?: (id: string, updates: Partial<Doctor>) => Promise<void>;
+  onUpdateLab?: (id: string, updates: Partial<Lab>) => Promise<void>;
   onUpdateBookingStatus: (id: string, status: BookingStatus, booking?: Booking) => void;
   onDeleteBooking: (id: string) => void;
   onResetSeedData: () => void;
@@ -89,6 +99,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUnblockLab,
   onAddDoctorDirectly,
   onAddLabDirectly,
+  onUpdateDoctor,
+  onUpdateLab,
   onUpdateBookingStatus,
   onDeleteBooking,
   onResetSeedData
@@ -136,6 +148,98 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedProviderForStatement, setSelectedProviderForStatement] = useState<Doctor | Lab | null>(null);
   const [selectedTypeForStatement, setSelectedTypeForStatement] = useState<'doctor' | 'lab'>('doctor');
   const [isStatementOpen, setIsStatementOpen] = useState(false);
+
+  // Admin Edit Provider Ad Image Modal State
+  const [editingProvider, setEditingProvider] = useState<
+    { type: 'doctor'; data: Doctor } | { type: 'lab'; data: Lab } | null
+  >(null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string>('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  useEffect(() => {
+    return () => {
+      if (editImagePreview && editImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(editImagePreview);
+      }
+    };
+  }, [editImagePreview]);
+
+  const openEditDoctorModal = (doc: Doctor) => {
+    setEditingProvider({ type: 'doctor', data: doc });
+    setEditImageFile(null);
+    setEditImagePreview('');
+    setEditError('');
+  };
+
+  const openEditLabModal = (lab: Lab) => {
+    setEditingProvider({ type: 'lab', data: lab });
+    setEditImageFile(null);
+    setEditImagePreview('');
+    setEditError('');
+  };
+
+  const closeEditModal = () => {
+    if (isSavingEdit) return;
+    setEditingProvider(null);
+    setEditImageFile(null);
+    setEditImagePreview('');
+    setEditError('');
+  };
+
+  const handleSelectEditImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setEditImageFile(file);
+      setEditImagePreview(URL.createObjectURL(file));
+      setEditError('');
+    }
+    e.target.value = '';
+  };
+
+  const handleSaveEditedImage = async () => {
+    if (!editingProvider || isSavingEdit) return;
+    if (!editImageFile) {
+      setEditError('يرجى اختيار صورة جديدة من الاستوديو أولاً قبل الحفظ.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError('');
+
+    try {
+      if (editingProvider.type === 'doctor') {
+        const docItem = editingProvider.data;
+        const uploadedUrl = await uploadDoctorImageToStorage(docItem.id, editImageFile);
+        if (onUpdateDoctor) {
+          await onUpdateDoctor(docItem.id, {
+            clinic_image: uploadedUrl,
+            clinicPhoto: uploadedUrl
+          });
+        }
+        setInternalSuccessMsg(`تم تحديث صورة العيادة / الإعلان للدكتور (${docItem.name}) وحفظها بنجاح!`);
+      } else {
+        const labItem = editingProvider.data;
+        const uploadedUrl = await uploadLabImageToStorage(labItem.id, editImageFile);
+        if (onUpdateLab) {
+          await onUpdateLab(labItem.id, {
+            labPhoto: uploadedUrl
+          });
+        }
+        setInternalSuccessMsg(`تم تحديث صورة المعمل / الإعلان (${labItem.name}) وحفظها بنجاح!`);
+      }
+      setEditingProvider(null);
+      setEditImageFile(null);
+      setEditImagePreview('');
+      setTimeout(() => setInternalSuccessMsg(''), 8000);
+    } catch (err) {
+      console.error('Error updating provider image from admin:', err);
+      setEditError('حدث خطأ أثناء رفع الصورة أو حفظها، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Check stored password
   useEffect(() => {
@@ -982,10 +1086,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                               <button
                                 onClick={() => openProviderStatement(doc, 'doctor')}
-                                className="flex-1 py-2 px-3 rounded-xl bg-[#0f2a44] hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                className="flex-1 min-w-[140px] py-2 px-3 rounded-xl bg-[#0f2a44] hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                               >
                                 <FileText className="w-4 h-4 text-teal-300" />
                                 <span>كشف الحساب والتقارير</span>
@@ -1000,6 +1104,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               >
                                 <span>واتساب</span>
                               </a>
+
+                              <button
+                                type="button"
+                                onClick={() => openEditDoctorModal(doc)}
+                                className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                                title="تعديل صورة العيادة / الإعلان"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>تعديل</span>
+                              </button>
 
                               {onBlockDoctor && (
                                 <button
@@ -1182,10 +1296,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                               <button
                                 onClick={() => openProviderStatement(lab, 'lab')}
-                                className="flex-1 py-2 px-3 rounded-xl bg-[#0f2a44] hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                className="flex-1 min-w-[140px] py-2 px-3 rounded-xl bg-[#0f2a44] hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                               >
                                 <FileText className="w-4 h-4 text-cyan-300" />
                                 <span>كشف الحساب والتقارير</span>
@@ -1200,6 +1314,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               >
                                 <span>واتساب</span>
                               </a>
+
+                              <button
+                                type="button"
+                                onClick={() => openEditLabModal(lab)}
+                                className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                                title="تعديل صورة المعمل / الإعلان"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>تعديل</span>
+                              </button>
 
                               {onBlockLab && (
                                 <button
@@ -1290,6 +1414,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <span>قبول واعتماد</span>
                                   </button>
                                   <button
+                                    type="button"
+                                    onClick={() => openEditDoctorModal(doc)}
+                                    className="px-3 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="تعديل صورة العيادة / الإعلان"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    <span>تعديل</span>
+                                  </button>
+                                  <button
                                     onClick={() => onRejectDoctor(doc.id)}
                                     className="px-3 py-2 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs transition-colors"
                                   >
@@ -1344,6 +1477,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   >
                                     <Check className="w-4 h-4" />
                                     <span>قبول واعتماد</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditLabModal(lab)}
+                                    className="px-3 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="تعديل صورة المعمل / الإعلان"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    <span>تعديل</span>
                                   </button>
                                   <button
                                     onClick={() => onRejectLab(lab.id)}
@@ -1439,6 +1581,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       </button>
                                     )}
                                     <button
+                                      type="button"
+                                      onClick={() => openEditDoctorModal(doc)}
+                                      className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                                      title="تعديل صورة العيادة / الإعلان"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      <span>تعديل</span>
+                                    </button>
+                                    <button
                                       onClick={() => onDeleteDoctor(doc.id)}
                                       className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
                                       title="حذف نهائي"
@@ -1494,6 +1645,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <span>فك الحظر واستعادة الحساب</span>
                                       </button>
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditLabModal(lab)}
+                                      className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                                      title="تعديل صورة المعمل / الإعلان"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      <span>تعديل</span>
+                                    </button>
                                     <button
                                       onClick={() => onDeleteLab(lab.id)}
                                       className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
@@ -1957,6 +2117,304 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Edit Provider Ad Photo Modal */}
+      {editingProvider && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150"
+          dir="rtl"
+          onClick={closeEditModal}
+        >
+          <div
+            className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-4 max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-l from-green-700 via-emerald-700 to-[#0f2a44] text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-green-200">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-base sm:text-lg">
+                    {editingProvider.type === 'doctor'
+                      ? 'بيانات وتعديل صورة العيادة / الإعلان'
+                      : 'بيانات وتعديل صورة المعمل / الإعلان'}
+                  </h4>
+                  <p className="text-xs text-green-100 mt-0.5">
+                    {editingProvider.data.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={isSavingEdit}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                aria-label="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 text-right">
+              {/* All Provider Info (Read-Only Summary) */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#0f2a44] flex items-center gap-1.5">
+                    {editingProvider.type === 'doctor' ? (
+                      <Stethoscope className="w-4 h-4 text-teal-600" />
+                    ) : (
+                      <FlaskConical className="w-4 h-4 text-cyan-700" />
+                    )}
+                    <span>بيانات {editingProvider.type === 'doctor' ? 'الطبيب والعيادة' : 'المعمل'}</span>
+                  </span>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                    {editingProvider.data.status === 'approved'
+                      ? 'معتمد'
+                      : editingProvider.data.status === 'pending'
+                        ? 'قيد المراجعة'
+                        : editingProvider.data.status === 'blocked'
+                          ? 'محظور'
+                          : 'مرفوض'}
+                  </span>
+                </div>
+
+                {editingProvider.type === 'doctor' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">الاسم</span>
+                      <strong className="text-[#0f2a44]">{editingProvider.data.name}</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">التخصص</span>
+                      <strong className="text-teal-800">{editingProvider.data.specialty}</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">رقم الهاتف</span>
+                      <strong className="font-mono text-slate-900" dir="ltr">
+                        {editingProvider.data.phone1}
+                        {editingProvider.data.phone2 ? ` / ${editingProvider.data.phone2}` : ''}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">سعر الكشف</span>
+                      <strong className="text-emerald-700">{editingProvider.data.price} جنيه</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                      <span className="text-slate-400 block text-[11px]">المحافظة / المركز والعنوان</span>
+                      <strong className="text-slate-800">
+                        {[
+                          editingProvider.data.governorate,
+                          editingProvider.data.center,
+                          editingProvider.data.address
+                        ]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </strong>
+                    </div>
+                    {editingProvider.data.workingHours && (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                        <span className="text-slate-400 block text-[11px]">ساعات العمل</span>
+                        <strong className="text-slate-800">{editingProvider.data.workingHours}</strong>
+                      </div>
+                    )}
+                    {editingProvider.data.googleMapsUrl && (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                        <span className="text-slate-400 block text-[11px]">رابط خرائط جوجل</span>
+                        <a
+                          href={editingProvider.data.googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-teal-700 font-bold hover:underline break-all"
+                          dir="ltr"
+                        >
+                          {editingProvider.data.googleMapsUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">اسم المعمل</span>
+                      <strong className="text-[#0f2a44]">{editingProvider.data.name}</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">رقم الهاتف</span>
+                      <strong className="font-mono text-slate-900" dir="ltr">{editingProvider.data.phone}</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">سعر البداية</span>
+                      <strong className="text-cyan-800">{editingProvider.data.startingPrice} جنيه</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                      <span className="text-slate-400 block text-[11px]">عدد التحاليل</span>
+                      <strong className="text-slate-900">{editingProvider.data.tests?.length || 0} فحص</strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                      <span className="text-slate-400 block text-[11px]">المحافظة / المركز والعنوان</span>
+                      <strong className="text-slate-800">
+                        {[
+                          editingProvider.data.governorate,
+                          editingProvider.data.center,
+                          editingProvider.data.address
+                        ]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </strong>
+                    </div>
+                    {editingProvider.data.workingHours && (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                        <span className="text-slate-400 block text-[11px]">ساعات العمل</span>
+                        <strong className="text-slate-800">{editingProvider.data.workingHours}</strong>
+                      </div>
+                    )}
+                    {editingProvider.data.googleMapsUrl && (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2">
+                        <span className="text-slate-400 block text-[11px]">رابط خرائط جوجل</span>
+                        <a
+                          href={editingProvider.data.googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-cyan-700 font-bold hover:underline break-all"
+                          dir="ltr"
+                        >
+                          {editingProvider.data.googleMapsUrl}
+                        </a>
+                      </div>
+                    )}
+                    {editingProvider.data.tests && editingProvider.data.tests.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-100 sm:col-span-2 space-y-1.5">
+                        <span className="text-slate-400 block text-[11px]">قائمة التحاليل المتاحة</span>
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                          {editingProvider.data.tests.map((test) => (
+                            <span
+                              key={test.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-700"
+                            >
+                              <span>{test.name}:</span>
+                              <strong className="text-cyan-800">{test.price} ج</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Editable Ad Image Section */}
+              <div className="p-4 rounded-2xl border-2 border-dashed border-green-400 bg-green-50/40 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-[#0f2a44] flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-green-600" />
+                    <span>
+                      {editingProvider.type === 'doctor'
+                        ? 'صورة العيادة / الإعلان (القابلة للتعديل)'
+                        : 'صورة المعمل / الإعلان (القابلة للتعديل)'}
+                    </span>
+                  </span>
+                  {editImagePreview && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-green-600 text-white text-[11px] font-bold">
+                      معاينة الصورة الجديدة ✓
+                    </span>
+                  )}
+                </div>
+
+                {/* Image Preview Area */}
+                {(() => {
+                  const currentSavedImg =
+                    editingProvider.type === 'doctor'
+                      ? sanitizeClinicImageUrl(editingProvider.data.clinic_image) ||
+                        sanitizeClinicImageUrl(editingProvider.data.clinicPhoto)
+                      : sanitizeClinicImageUrl(editingProvider.data.labPhoto);
+                  const previewToDisplay = editImagePreview || currentSavedImg;
+
+                  return previewToDisplay ? (
+                    <div className="w-full rounded-xl overflow-hidden border border-slate-200 bg-white shadow-xs">
+                      <img
+                        src={previewToDisplay}
+                        alt={editingProvider.data.name}
+                        className="w-full h-auto max-h-72 object-contain block mx-auto"
+                      />
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center rounded-xl bg-white border border-slate-200 text-xs text-slate-400">
+                      لا توجد صورة إعلان حالياً — اختر صورة جديدة من الاستوديو
+                    </div>
+                  );
+                })()}
+
+                {/* Gallery Picker */}
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                  <label className="flex-1 min-w-[200px] py-3 px-4 rounded-xl bg-white hover:bg-green-50 text-green-800 border-2 border-green-500 font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs">
+                    <Upload className="w-4 h-4 text-green-600" />
+                    <span>اختيار صورة جديدة من الاستوديو</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSelectEditImage}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {editImagePreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditImageFile(null);
+                        setEditImagePreview('');
+                      }}
+                      className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                    >
+                      إلغاء الاختيار
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {editError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSaveEditedImage}
+                  disabled={isSavingEdit || !editImageFile}
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-black text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جاري رفع وحفظ الصورة...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>حفظ الصورة الجديدة</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  disabled={isSavingEdit}
+                  className="py-3.5 px-5 rounded-2xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-sm transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
