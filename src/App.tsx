@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react';
 import { 
   Stethoscope, 
   FlaskConical, 
@@ -12,9 +12,6 @@ import {
   MessageSquare,
   Mic
 } from 'lucide-react';
-import { Medical3DScene } from './components/Medical3DScene';
-import { GeminiLiveVoiceModal } from './components/GeminiLiveVoiceModal';
-import { GeminiChatModal } from './components/GeminiChatModal';
 import { 
   Doctor, 
   Lab, 
@@ -30,6 +27,29 @@ import {
 } from './types';
 import { STORAGE_KEYS, DEFAULT_COMMISSION_RATE } from './constants';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import {
+  getCachedDoctors,
+  saveCachedDoctors,
+  getCachedLabs,
+  saveCachedLabs,
+  getCachedBookings,
+  saveCachedBookings,
+  getCachedReviews,
+  saveCachedReviews,
+  getCachedPrescriptions,
+  saveCachedPrescriptions,
+  getCachedMedicalRecords,
+  saveCachedMedicalRecords,
+  getCachedPlatformSettings,
+  saveCachedPlatformSettings,
+  getOfflineBookingQueue,
+  enqueueOfflineBooking,
+  removeOfflineBooking,
+  mergeQueuedBookings,
+  reportWeakNetwork,
+  QueuedBooking
+} from './utils/localCache';
 
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
@@ -44,25 +64,63 @@ import {
   matchesSpecialty 
 } from './utils/filterHelpers';
 import { LabCard } from './components/LabCard';
-import { BookingModal } from './components/BookingModal';
-import { DoctorRegisterModal } from './components/DoctorRegisterModal';
-import { LabRegisterModal } from './components/LabRegisterModal';
-import { AdminPanel } from './components/AdminPanel';
-import { PatientBookingsModal } from './components/PatientBookingsModal';
-import { MedicalRecordsModal } from './components/MedicalRecordsModal';
-import { PrescriptionPrintModal } from './components/PrescriptionPrintModal';
-import { PWAInstallGuideModal } from './components/PWAInstallGuideModal';
-import { NotificationManagerModal } from './components/NotificationManagerModal';
-import { ReviewModal } from './components/ReviewModal';
-import { ProviderReviewsModal } from './components/ProviderReviewsModal';
-import { ProviderLoginModal } from './components/ProviderLoginModal';
-import { ProviderPortalModal } from './components/ProviderPortalModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { Footer } from './components/Footer';
 
+// Heavy 3D & Modal components lazily code-split so initial home page opens in < 3 seconds
+const Medical3DScene = lazy(() =>
+  import('./components/Medical3DScene').then((m) => ({ default: m.Medical3DScene }))
+);
+const GeminiLiveVoiceModal = lazy(() =>
+  import('./components/GeminiLiveVoiceModal').then((m) => ({ default: m.GeminiLiveVoiceModal }))
+);
+const GeminiChatModal = lazy(() =>
+  import('./components/GeminiChatModal').then((m) => ({ default: m.GeminiChatModal }))
+);
+const BookingModal = lazy(() =>
+  import('./components/BookingModal').then((m) => ({ default: m.BookingModal }))
+);
+const DoctorRegisterModal = lazy(() =>
+  import('./components/DoctorRegisterModal').then((m) => ({ default: m.DoctorRegisterModal }))
+);
+const LabRegisterModal = lazy(() =>
+  import('./components/LabRegisterModal').then((m) => ({ default: m.LabRegisterModal }))
+);
+const AdminPanel = lazy(() =>
+  import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel }))
+);
+const PatientBookingsModal = lazy(() =>
+  import('./components/PatientBookingsModal').then((m) => ({ default: m.PatientBookingsModal }))
+);
+const MedicalRecordsModal = lazy(() =>
+  import('./components/MedicalRecordsModal').then((m) => ({ default: m.MedicalRecordsModal }))
+);
+const PrescriptionPrintModal = lazy(() =>
+  import('./components/PrescriptionPrintModal').then((m) => ({ default: m.PrescriptionPrintModal }))
+);
+const PWAInstallGuideModal = lazy(() =>
+  import('./components/PWAInstallGuideModal').then((m) => ({ default: m.PWAInstallGuideModal }))
+);
+const NotificationManagerModal = lazy(() =>
+  import('./components/NotificationManagerModal').then((m) => ({ default: m.NotificationManagerModal }))
+);
+const ReviewModal = lazy(() =>
+  import('./components/ReviewModal').then((m) => ({ default: m.ReviewModal }))
+);
+const ProviderReviewsModal = lazy(() =>
+  import('./components/ProviderReviewsModal').then((m) => ({ default: m.ProviderReviewsModal }))
+);
+const ProviderLoginModal = lazy(() =>
+  import('./components/ProviderLoginModal').then((m) => ({ default: m.ProviderLoginModal }))
+);
+const ProviderPortalModal = lazy(() =>
+  import('./components/ProviderPortalModal').then((m) => ({ default: m.ProviderPortalModal }))
+);
+
 import { 
   testFirestoreConnection,
+  isNetworkOrOfflineError,
   subscribeDoctors, 
   saveDoctorToFirestore, 
   updateDoctorStatusInFirestore, 
@@ -96,38 +154,38 @@ import {
   deleteMedicalRecordFromFirestore
 } from './firebase';
 
+const PAGE_SIZE = 10;
+
 export default function App() {
   // Dark Mode Hook
   const { isDark, toggleDarkMode } = useDarkMode();
 
-  // Skeleton Loader State during initial data fetch
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  // Skeleton Loader State (immediately false if device cache already has data)
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(
+    () => getCachedDoctors().length === 0 && getCachedLabs().length === 0
+  );
+
+  // Defer mounting heavy Three.js scene until right after first paint
+  const [show3DScene, setShow3DScene] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShow3DScene(true), 120);
+    return () => clearTimeout(timer);
+  }, []);
 
   // PWA Hook
   const { isInstallable, isInstalled, isIOS, isStandalone, promptInstall } = usePWAInstall();
 
-  // Network Online status
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
+  // Network Online + Weak Network + Offline Queue Status
+  const { isOnline, isWeakNetwork } = useOnlineStatus();
+
+  // Main Data States - Immediately hydrated from persistent device cache, synced silently with Firestore
+  const [doctors, setDoctors] = useState<Doctor[]>(() => getCachedDoctors());
+  const [labs, setLabs] = useState<Lab[]>(() => getCachedLabs());
+  const [bookings, setBookings] = useState<QueuedBooking[]>(() =>
+    mergeQueuedBookings(getCachedBookings())
   );
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  // Main Data States - strictly empty array [] by default, synchronized in real time with Firestore
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviews, setReviews] = useState<Review[]>(() => getCachedReviews());
 
   // Provider Session & Auth State (Persisted in localStorage)
   const [providerSession, setProviderSession] = useState<ProviderSession | null>(() => {
@@ -142,10 +200,9 @@ export default function App() {
   const [providerPortalModalOpen, setProviderPortalModalOpen] = useState(false);
 
   // Platform Commission Settings (12% ON/OFF toggle)
-  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
-    isCommissionEnabled: true,
-    commissionRate: DEFAULT_COMMISSION_RATE
-  });
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(() =>
+    getCachedPlatformSettings()
+  );
 
   // Push Notification Prompt Banner State
   const [showPushPromptBanner, setShowPushPromptBanner] = useState(false);
@@ -159,8 +216,10 @@ export default function App() {
   const [selectedBookingForReview, setSelectedBookingForReview] = useState<Booking | null>(null);
 
   // E-Prescriptions & Medical Records State
-  const [prescriptions, setPrescriptions] = useState<EPrescription[]>([]);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecordAttachment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<EPrescription[]>(() => getCachedPrescriptions());
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecordAttachment[]>(() =>
+    getCachedMedicalRecords()
+  );
   const [medicalRecordsModalOpen, setMedicalRecordsModalOpen] = useState(false);
   const [activePrescriptionForPrint, setActivePrescriptionForPrint] = useState<EPrescription | null>(null);
 
@@ -168,12 +227,85 @@ export default function App() {
   const [geminiLiveVoiceOpen, setGeminiLiveVoiceOpen] = useState(false);
   const [geminiChatOpen, setGeminiChatOpen] = useState(false);
 
-  // Connect to Firestore and subscribe to real-time updates for doctors, labs, bookings, notifications, reviews, and records
-  useEffect(() => {
-    testFirestoreConnection();
+  // Flush any locally queued offline bookings once network returns
+  const isFlushingQueueRef = useRef(false);
+  const flushOfflineBookings = useCallback(async () => {
+    if (isFlushingQueueRef.current) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    const queue = getOfflineBookingQueue();
+    if (queue.length === 0) return;
 
+    isFlushingQueueRef.current = true;
+    try {
+      for (const queued of queue) {
+        const cleanBooking: Booking = {
+          id: queued.id,
+          bookingCode: queued.bookingCode,
+          providerType: queued.providerType,
+          providerId: queued.providerId,
+          providerName: queued.providerName,
+          providerSpecialtyOrType: queued.providerSpecialtyOrType,
+          providerAddress: queued.providerAddress,
+          patientName: queued.patientName,
+          patientPhone: queued.patientPhone,
+          appointmentDate: queued.appointmentDate,
+          appointmentTime: queued.appointmentTime,
+          selectedTestName: queued.selectedTestName,
+          price: queued.price,
+          notes: queued.notes,
+          status: queued.status,
+          createdAt: queued.createdAt
+        };
+        try {
+          await Promise.race([
+            saveBookingToFirestore(cleanBooking),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('network timeout')), 8000)
+            )
+          ]);
+          removeOfflineBooking(queued.id);
+          reportWeakNetwork(false);
+          setBookings((prev) =>
+            prev.map((b) => (b.id === queued.id ? { ...cleanBooking, isOfflineQueued: false } : b))
+          );
+        } catch (err) {
+          if (isNetworkOrOfflineError(err)) {
+            reportWeakNetwork(true);
+            break;
+          }
+        }
+      }
+    } finally {
+      isFlushingQueueRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    flushOfflineBookings();
+    const handleOnline = () => {
+      flushOfflineBookings();
+    };
+    window.addEventListener('online', handleOnline);
+    const intervalId = setInterval(() => {
+      if (getOfflineBookingQueue().length > 0 && navigator.onLine) {
+        flushOfflineBookings();
+      }
+    }, 15000);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(intervalId);
+    };
+  }, [flushOfflineBookings]);
+
+  // Progressive Firestore sync: subscribe to Doctors, Labs & Settings first; defer secondary streams slightly
+  useEffect(() => {
     let docsLoaded = false;
     let labsLoaded = false;
+    let unsubBookings: (() => void) | undefined;
+    let unsubNotifications: (() => void) | undefined;
+    let unsubReviews: (() => void) | undefined;
+    let unsubPrescriptions: (() => void) | undefined;
+    let unsubMedicalRecords: (() => void) | undefined;
 
     const checkFinishedLoading = () => {
       if (docsLoaded && labsLoaded) {
@@ -181,72 +313,78 @@ export default function App() {
       }
     };
 
-    // Safety fallback so skeletons don't stay forever if database is empty or offline
+    // Tight safety fallback so UI is never blocked waiting on slow internet
     const safetyTimer = setTimeout(() => {
       setIsLoadingData(false);
-    }, 1200);
+    }, 800);
 
-    // Subscribe to doctors in real-time
+    // Priority 1: Core directory (Doctors, Labs, Settings)
     const unsubDoctors = subscribeDoctors((firebaseDoctors) => {
       setDoctors(firebaseDoctors);
+      saveCachedDoctors(firebaseDoctors);
       docsLoaded = true;
       checkFinishedLoading();
     });
 
-    // Subscribe to labs in real-time
     const unsubLabs = subscribeLabs((firebaseLabs) => {
       setLabs(firebaseLabs);
+      saveCachedLabs(firebaseLabs);
       labsLoaded = true;
       checkFinishedLoading();
     });
 
-    // Subscribe to bookings in real-time
-    const unsubBookings = subscribeBookings((firebaseBookings) => {
-      setBookings(firebaseBookings);
-    });
-
-    // Subscribe to notifications in real-time
-    const unsubNotifications = subscribeNotifications((notifList) => {
-      setNotifications((prev) => {
-        // If there's a new incoming notification while app is running, play chime and trigger push notification
-        if (prev.length > 0 && notifList.length > prev.length) {
-          const newest = notifList[0];
-          triggerDevicePushNotification(newest.title, newest.body, { bookingCode: newest.bookingCode });
-        }
-        return notifList;
-      });
-    });
-
-    // Subscribe to reviews in real-time
-    const unsubReviews = subscribeReviews((firebaseReviews) => {
-      setReviews(firebaseReviews);
-    });
-
-    // Subscribe to platform settings (commission 12% toggle)
     const unsubSettings = subscribePlatformSettings((settings) => {
       setPlatformSettings(settings);
+      saveCachedPlatformSettings(settings);
     });
 
-    // Subscribe to prescriptions in real-time
-    const unsubPrescriptions = subscribePrescriptions((firebasePrescriptions) => {
-      setPrescriptions(firebasePrescriptions);
-    });
+    // Priority 2: Defer secondary real-time streams so home screen opens immediately
+    const secondaryTimer = setTimeout(() => {
+      testFirestoreConnection();
 
-    // Subscribe to medical records in real-time
-    const unsubMedicalRecords = subscribeMedicalRecords((firebaseRecords) => {
-      setMedicalRecords(firebaseRecords);
-    });
+      unsubBookings = subscribeBookings((firebaseBookings) => {
+        const merged = mergeQueuedBookings(firebaseBookings);
+        setBookings(merged);
+        saveCachedBookings(merged);
+      });
+
+      unsubNotifications = subscribeNotifications((notifList) => {
+        setNotifications((prev) => {
+          if (prev.length > 0 && notifList.length > prev.length) {
+            const newest = notifList[0];
+            triggerDevicePushNotification(newest.title, newest.body, { bookingCode: newest.bookingCode });
+          }
+          return notifList;
+        });
+      });
+
+      unsubReviews = subscribeReviews((firebaseReviews) => {
+        setReviews(firebaseReviews);
+        saveCachedReviews(firebaseReviews);
+      });
+
+      unsubPrescriptions = subscribePrescriptions((firebasePrescriptions) => {
+        setPrescriptions(firebasePrescriptions);
+        saveCachedPrescriptions(firebasePrescriptions);
+      });
+
+      unsubMedicalRecords = subscribeMedicalRecords((firebaseRecords) => {
+        setMedicalRecords(firebaseRecords);
+        saveCachedMedicalRecords(firebaseRecords);
+      });
+    }, 350);
 
     return () => {
       clearTimeout(safetyTimer);
+      clearTimeout(secondaryTimer);
       unsubDoctors();
       unsubLabs();
-      unsubBookings();
-      unsubNotifications();
-      unsubReviews();
       unsubSettings();
-      unsubPrescriptions();
-      unsubMedicalRecords();
+      unsubBookings?.();
+      unsubNotifications?.();
+      unsubReviews?.();
+      unsubPrescriptions?.();
+      unsubMedicalRecords?.();
     };
   }, []);
 
@@ -262,19 +400,15 @@ export default function App() {
     }
   }, []);
 
-  // Clear legacy cached keys to ensure interface is clean
+  // Clean up only truly obsolete v2/v3 keys (never clear active ehgz_cache_v1_* device caches)
   useEffect(() => {
     try {
-      localStorage.removeItem(STORAGE_KEYS.DOCTORS);
-      localStorage.removeItem(STORAGE_KEYS.LABS);
-      localStorage.removeItem('ehgz_doctors_data_clean');
       localStorage.removeItem('ehgz_doctors_data_v3');
       localStorage.removeItem('ehgz_doctors_data_v2');
-      localStorage.removeItem('ehgz_labs_data_clean');
       localStorage.removeItem('ehgz_labs_data_v3');
       localStorage.removeItem('ehgz_labs_data_v2');
-    } catch (e) {
-      console.log('Error clearing legacy keys:', e);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -289,6 +423,27 @@ export default function App() {
   const [onlyAvailableToday, setOnlyAvailableToday] = useState(false);
   const [providerTypeView, setProviderTypeView] = useState<ProviderTypeView>('all');
   const [activeSection, setActiveSection] = useState<'doctors' | 'labs'>('doctors');
+
+  // Progressive 10-by-10 Pagination State (Keeps 100% of doctors & labs intact)
+  const [visibleDoctorsCount, setVisibleDoctorsCount] = useState(PAGE_SIZE);
+  const [visibleLabsCount, setVisibleLabsCount] = useState(PAGE_SIZE);
+  const doctorsLoadMoreRef = useRef<HTMLDivElement>(null);
+  const labsLoadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleDoctorsCount(PAGE_SIZE);
+    setVisibleLabsCount(PAGE_SIZE);
+  }, [
+    searchTerm,
+    activeFilter,
+    selectedGovernorate,
+    selectedCenter,
+    sortBy,
+    priceFilter,
+    minRating,
+    onlyAvailableToday,
+    providerTypeView
+  ]);
 
   const handleResetAllFilters = () => {
     setSearchTerm('');
@@ -387,9 +542,42 @@ export default function App() {
     setBookingModalOpen(true);
   };
 
-  const handleBookingSuccess = async (newBooking: Booking) => {
-    await saveBookingToFirestore(newBooking);
-    setBookings((prev) => (prev.some((b) => b.id === newBooking.id) ? prev : [newBooking, ...prev]));
+  const handleBookingSuccess = async (newBooking: Booking): Promise<{ queued: boolean }> => {
+    const addLocalBooking = (item: QueuedBooking) => {
+      setBookings((prev) => {
+        const next = prev.some((b) => b.id === item.id)
+          ? prev.map((b) => (b.id === item.id ? item : b))
+          : [item, ...prev];
+        saveCachedBookings(next);
+        return next;
+      });
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineBooking(newBooking);
+      addLocalBooking({ ...newBooking, isOfflineQueued: true });
+      return { queued: true };
+    }
+
+    try {
+      await Promise.race([
+        saveBookingToFirestore(newBooking),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('network timeout')), 7000)
+        )
+      ]);
+      reportWeakNetwork(false);
+      addLocalBooking(newBooking);
+      return { queued: false };
+    } catch (err) {
+      if (isNetworkOrOfflineError(err)) {
+        reportWeakNetwork(true);
+        enqueueOfflineBooking(newBooking);
+        addLocalBooking({ ...newBooking, isOfflineQueued: true });
+        return { queued: true };
+      }
+      throw err;
+    }
   };
 
   // Reviews & Rating triggers
@@ -883,6 +1071,42 @@ export default function App() {
       return ratingB - ratingA;
     });
 
+  // Displayed slices (10 per page, load more on scroll)
+  const displayedDoctors = filteredDoctors.slice(0, visibleDoctorsCount);
+  const hasMoreDoctors = visibleDoctorsCount < filteredDoctors.length;
+  const displayedLabs = filteredLabs.slice(0, visibleLabsCount);
+  const hasMoreLabs = visibleLabsCount < filteredLabs.length;
+
+  useEffect(() => {
+    const node = doctorsLoadMoreRef.current;
+    if (!node || !hasMoreDoctors || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleDoctorsCount((prev) => Math.min(filteredDoctors.length, prev + PAGE_SIZE));
+        }
+      },
+      { rootMargin: '250px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreDoctors, filteredDoctors.length]);
+
+  useEffect(() => {
+    const node = labsLoadMoreRef.current;
+    if (!node || !hasMoreLabs || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleLabsCount((prev) => Math.min(filteredLabs.length, prev + PAGE_SIZE));
+        }
+      },
+      { rootMargin: '250px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreLabs, filteredLabs.length]);
+
   // PWA Install buttons click
   const handleAndroidInstallClick = () => {
     if (isInstallable) {
@@ -921,11 +1145,11 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f8fafc] dark:bg-[#0b1320] text-[#0f2a44] dark:text-slate-100 antialiased selection:bg-teal-500 selection:text-white transition-colors duration-200" dir="rtl">
       
-      {/* Offline Toast */}
-      {!isOnline && (
-        <div className="fixed top-0 inset-x-0 z-50 bg-amber-500 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-md">
-          <WifiOff className="w-4 h-4 animate-bounce" />
-          <span>أنت تعمل حالياً في وضع عدم الاتصال بالإنترنت (Offline Mode). التطبيق محفوظ وسيعمل بشكل طبيعي.</span>
+      {/* Offline / Weak Network Top Notice */}
+      {(!isOnline || isWeakNetwork) && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-amber-500 text-white px-4 py-1.5 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-md">
+          <WifiOff className="w-3.5 h-3.5 shrink-0" />
+          <span>النت ضعيف، جاري المحاولة — يتم عرض البيانات المحفوظة محلياً بأمان</span>
         </div>
       )}
 
@@ -1096,12 +1320,26 @@ export default function App() {
 
           </div>
 
-          {/* Three.js 3D Interactive Medical Scene (Runs and auto-animates immediately upon app launch) */}
-          <Medical3DScene
-            isDarkMode={isDark}
-            onOpenLiveVoice={() => setGeminiLiveVoiceOpen(true)}
-            onOpenChatbot={() => setGeminiChatOpen(true)}
-          />
+          {/* Three.js 3D Interactive Medical Scene (Code-split & mounted right after first paint) */}
+          {show3DScene ? (
+            <Suspense
+              fallback={
+                <div className="w-full h-[360px] sm:h-[420px] md:h-[480px] rounded-3xl border border-teal-500/20 bg-gradient-to-b from-slate-900/90 via-slate-900 to-slate-950 animate-pulse flex items-center justify-center text-teal-300 text-xs font-bold">
+                  جاري تجهيز المجسم التفاعلي ثلاثي الأبعاد...
+                </div>
+              }
+            >
+              <Medical3DScene
+                isDarkMode={isDark}
+                onOpenLiveVoice={() => setGeminiLiveVoiceOpen(true)}
+                onOpenChatbot={() => setGeminiChatOpen(true)}
+              />
+            </Suspense>
+          ) : (
+            <div className="w-full h-[360px] sm:h-[420px] md:h-[480px] rounded-3xl border border-teal-500/20 bg-gradient-to-b from-slate-900/90 via-slate-900 to-slate-950 flex items-center justify-center text-teal-300 text-xs font-bold">
+              منظومة احجز عند دكتورك الرقمية
+            </div>
+          )}
 
         </section>
 
@@ -1220,17 +1458,33 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredDoctors.map((doctor) => (
-                  <DoctorCard
-                    key={doctor.id}
-                    doctor={doctor}
-                    onBook={handleOpenBookingDoctor}
-                    reviews={reviews}
-                    onViewReviews={handleOpenDoctorReviews}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {displayedDoctors.map((doctor) => (
+                    <DoctorCard
+                      key={doctor.id}
+                      doctor={doctor}
+                      onBook={handleOpenBookingDoctor}
+                      reviews={reviews}
+                      onViewReviews={handleOpenDoctorReviews}
+                    />
+                  ))}
+                </div>
+
+                {hasMoreDoctors && (
+                  <div ref={doctorsLoadMoreRef} className="mt-8 flex flex-col items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleDoctorsCount((prev) => Math.min(filteredDoctors.length, prev + PAGE_SIZE))
+                      }
+                      className="px-6 py-3 rounded-2xl bg-teal-50 dark:bg-teal-950/70 hover:bg-teal-100 dark:hover:bg-teal-900 text-[#0d9488] dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-extrabold text-sm shadow-xs transition-all active:scale-95 cursor-pointer"
+                    >
+                      عرض المزيد ({Math.min(PAGE_SIZE, filteredDoctors.length - visibleDoctorsCount)} أطباء إضافيين • المتبقي {filteredDoctors.length - visibleDoctorsCount})
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -1301,17 +1555,33 @@ export default function App() {
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">جرب إزالة الفلتر أو كتابة كلمة بحث أخرى</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredLabs.map((lab) => (
-                  <LabCard
-                    key={lab.id}
-                    lab={lab}
-                    onBook={(labItem: Lab, test?: LabTestItem) => handleOpenBookingLab(labItem, test)}
-                    reviews={reviews}
-                    onViewReviews={handleOpenLabReviews}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {displayedLabs.map((lab) => (
+                    <LabCard
+                      key={lab.id}
+                      lab={lab}
+                      onBook={(labItem: Lab, test?: LabTestItem) => handleOpenBookingLab(labItem, test)}
+                      reviews={reviews}
+                      onViewReviews={handleOpenLabReviews}
+                    />
+                  ))}
+                </div>
+
+                {hasMoreLabs && (
+                  <div ref={labsLoadMoreRef} className="mt-8 flex flex-col items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleLabsCount((prev) => Math.min(filteredLabs.length, prev + PAGE_SIZE))
+                      }
+                      className="px-6 py-3 rounded-2xl bg-teal-50 dark:bg-teal-950/70 hover:bg-teal-100 dark:hover:bg-teal-900 text-[#0d9488] dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-extrabold text-sm shadow-xs transition-all active:scale-95 cursor-pointer"
+                    >
+                      عرض المزيد ({Math.min(PAGE_SIZE, filteredLabs.length - visibleLabsCount)} معامل إضافية • المتبقي {filteredLabs.length - visibleLabsCount})
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </section>
@@ -1328,6 +1598,7 @@ export default function App() {
         onNavigateSection={handleNavigateSection}
       />
 
+      <Suspense fallback={null}>
       {/* Booking Modal */}
       {bookingModalOpen && (
         <BookingModal
@@ -1543,6 +1814,7 @@ export default function App() {
           }}
         />
       )}
+      </Suspense>
 
       {/* Persistent Offline Connectivity Indicator */}
       <OfflineIndicator />

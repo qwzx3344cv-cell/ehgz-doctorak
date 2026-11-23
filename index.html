@@ -25,10 +25,18 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
-    <!-- Google Fonts: Cairo & Tajawal -->
+    <!-- Preload Main Cover Banner & Preconnect to Firebase -->
+    <link rel="preload" as="image" href="/assets/aistudio/857393128_2357599598318724_1090210002570918881_n_2720673a.webp" fetchpriority="high" />
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
+
+    <!-- Google Fonts: Cairo & Tajawal (Non-render-blocking for <3s startup on slow networks) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    </noscript>
   </head>
   <body class="bg-[#f8fafc] text-slate-800 font-['Cairo',sans-serif] antialiased selection:bg-teal-500 selection:text-white">
     <div id="root"></div>

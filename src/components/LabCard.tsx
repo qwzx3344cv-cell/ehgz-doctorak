@@ -14,6 +14,7 @@ import {
 import { Lab, LabTestItem, Review } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
 import { sanitizeClinicImageUrl } from '../firebase';
+import { ProgressiveLazyImage } from './ProgressiveLazyImage';
 
 interface LabCardProps {
   lab: Lab;
@@ -60,15 +61,13 @@ export const LabCard: React.FC<LabCardProps> = ({
       {/* Lab Ad Image Only: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
       {labImageSrc && !imgError && (
         <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <img
+          <ProgressiveLazyImage
             src={labImageSrc}
             alt={lab.name}
-            referrerPolicy="no-referrer"
-            loading="lazy"
-            decoding="async"
-            onError={() => {
+            onFatalError={() => {
               if (!imgError) setImgError(true);
             }}
+            containerClassName="relative w-full bg-white overflow-hidden"
             className="w-full h-auto object-contain block select-none"
           />
         </div>

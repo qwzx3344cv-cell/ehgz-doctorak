@@ -13,6 +13,7 @@ import {
 import { Doctor, Review } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
 import { sanitizeClinicImageUrl } from '../firebase';
+import { ProgressiveLazyImage } from './ProgressiveLazyImage';
 
 interface DoctorCardProps {
   doctor: Doctor;
@@ -61,15 +62,13 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({
       {/* Clinic / Ad Image Only: Full Width, Auto Height, Object-Contain, Clean White Backdrop, Zero Overlays */}
       {clinicImageSrc && !imgError && (
         <div className="w-full bg-white border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <img
+          <ProgressiveLazyImage
             src={clinicImageSrc}
             alt={doctor.name}
-            referrerPolicy="no-referrer"
-            loading="lazy"
-            decoding="async"
-            onError={() => {
+            onFatalError={() => {
               if (!imgError) setImgError(true);
             }}
+            containerClassName="relative w-full bg-white overflow-hidden"
             className="w-full h-auto object-contain block select-none"
           />
         </div>

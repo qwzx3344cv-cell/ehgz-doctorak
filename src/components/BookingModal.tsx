@@ -20,13 +20,15 @@ import confetti from 'canvas-confetti';
 import { Doctor, Lab, LabTestItem, Booking } from '../types';
 import { getGoogleMapsUrl } from '../utils/maps';
 import { sanitizeClinicImageUrl } from '../firebase';
+import { ProgressiveLazyImage } from './ProgressiveLazyImage';
+import type { QueuedBooking } from '../utils/localCache';
 
 interface BookingModalProps {
   provider: Doctor | Lab | null;
   providerType: 'doctor' | 'lab';
   initialTest?: LabTestItem;
   onClose: () => void;
-  onBookingSuccess: (booking: Booking) => void | Promise<void>;
+  onBookingSuccess: (booking: Booking) => void | Promise<{ queued?: boolean } | void>;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
@@ -51,7 +53,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<QueuedBooking | null>(null);
 
   if (!provider) return null;
 
@@ -110,8 +112,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     };
 
     try {
-      await onBookingSuccess(newBooking);
-      setConfirmedBooking(newBooking);
+      const result = await onBookingSuccess(newBooking);
+      const isQueued = Boolean(result && typeof result === 'object' && result.queued);
+      setConfirmedBooking(isQueued ? { ...newBooking, isOfflineQueued: true } : newBooking);
 
       // Trigger Confetti!
       try {
@@ -173,11 +176,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <CheckCircle className="w-9 h-9" />
               </div>
               <h4 className="text-xl font-black text-[#0f2a44] dark:text-white">
-                تم إرسال طلب الحجز بنجاح!
+                {confirmedBooking.isOfflineQueued
+                  ? 'تم حفظ طلب الحجز بنجاح!'
+                  : 'تم إرسال طلب الحجز بنجاح!'}
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                سيتم التواصل معك هاتفياً أو عبر واتساب لتأكيد الحضور
+                {confirmedBooking.isOfflineQueued
+                  ? 'النت ضعيف أو غير متصل — تم حفظ حجزك بأمان وسيتم إرساله تلقائياً فور عودة الإنترنت'
+                  : 'سيتم التواصل معك هاتفياً أو عبر واتساب لتأكيد الحضور'}
               </p>
+              {confirmedBooking.isOfflineQueued && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
+                  <span>محفوظ محلياً • جاري المحاولة للإرسال التلقائي</span>
+                </div>
+              )}
             </div>
 
             {/* Ticket Box */}
@@ -261,10 +273,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* Clinic / Lab Ad Image Only (Uncropped, Object-Contain, Clean White Backdrop) */}
             {providerAdImage && (
               <div className="w-full rounded-2xl bg-white border border-slate-200 dark:border-slate-700 overflow-hidden shadow-2xs">
-                <img
+                <ProgressiveLazyImage
                   src={providerAdImage}
                   alt={provider.name}
-                  referrerPolicy="no-referrer"
+                  eager
+                  containerClassName="relative w-full bg-white overflow-hidden"
                   className="w-full h-auto max-h-72 object-contain block"
                 />
               </div>

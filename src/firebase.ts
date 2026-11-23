@@ -2,6 +2,9 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection, 
   doc, 
   setDoc, 
@@ -29,13 +32,29 @@ import {
   MedicalRecordAttachment
 } from './types';
 import { sendPushNotification } from './utils/pwaNotifications';
+import { reportWeakNetwork } from './utils/localCache';
 export { sendPushNotification };
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
 // CRITICAL: Must pass firestoreDatabaseId from firebase-applet-config.json
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Enable persistent IndexedDB cache for instant reloads and offline availability
+export const db = (() => {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+})();
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
@@ -61,13 +80,13 @@ export function sanitizeClinicImageUrl(val?: unknown): string {
   return '';
 }
 
-// Process image while preserving sharp high-resolution quality for ad flyers & text readability
+// Process image automatically into lightweight WebP (with JPEG fallback) while keeping flyer text crisp & readable
 async function prepareImageForUpload(
   file: File
 ): Promise<{ uploadBlob: Blob; contentType: string; ext: string; fallbackDataUrl: string }> {
-  const isDirectWebImage =
-    file.size <= 4 * 1024 * 1024 &&
-    (file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/webp');
+  // Only skip re-encoding if already a compact WebP <= 220KB
+  const isAlreadyCompactWebP =
+    file.type === 'image/webp' && file.size <= 220 * 1024;
 
   const rawExt =
     file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
@@ -81,17 +100,17 @@ async function prepareImageForUpload(
         const origW = img.naturalWidth || img.width;
         const origH = img.naturalHeight || img.height;
 
-        // 1. Storage upload blob: keep original crisp file if <= 4MB, else resize cleanly up to 2400px
-        const buildHighResBlob = (): Promise<{ blob: Blob; contentType: string; ext: string }> => {
-          if (isDirectWebImage) {
+        // 1. Storage upload blob: automatically resize (max 1280px) & encode to lightweight WebP
+        const buildOptimizedWebPBlob = (): Promise<{ blob: Blob; contentType: string; ext: string }> => {
+          if (isAlreadyCompactWebP) {
             return Promise.resolve({
               blob: file,
-              contentType: file.type || 'image/jpeg',
-              ext: rawExt
+              contentType: 'image/webp',
+              ext: 'webp'
             });
           }
 
-          const maxStorageDim = 2400;
+          const maxStorageDim = 1280;
           let sw = origW;
           let sh = origH;
           if (sw > maxStorageDim || sh > maxStorageDim) {
@@ -111,34 +130,51 @@ async function prepareImageForUpload(
               ext: rawExt
             });
           }
+          // Crisp white backdrop in case source PNG had alpha transparency
+          sCtx.fillStyle = '#ffffff';
+          sCtx.fillRect(0, 0, sw, sh);
           sCtx.imageSmoothingEnabled = true;
           sCtx.imageSmoothingQuality = 'high';
           sCtx.drawImage(img, 0, 0, sw, sh);
 
           return new Promise((resBlob) => {
             sCanvas.toBlob(
-              (blob) => {
-                resBlob({
-                  blob: blob || file,
-                  contentType: blob ? 'image/jpeg' : file.type || 'image/jpeg',
-                  ext: blob ? 'jpg' : rawExt
-                });
+              (webpBlob) => {
+                if (webpBlob && webpBlob.size > 0 && webpBlob.type === 'image/webp') {
+                  resBlob({
+                    blob: webpBlob,
+                    contentType: 'image/webp',
+                    ext: 'webp'
+                  });
+                  return;
+                }
+                // Fallback to compressed JPEG if browser does not encode WebP
+                sCanvas.toBlob(
+                  (jpegBlob) => {
+                    resBlob({
+                      blob: jpegBlob || file,
+                      contentType: jpegBlob ? 'image/jpeg' : file.type || 'image/jpeg',
+                      ext: jpegBlob ? 'jpg' : rawExt
+                    });
+                  },
+                  'image/jpeg',
+                  0.84
+                );
               },
-              'image/jpeg',
-              0.94
+              'image/webp',
+              0.84
             );
           });
         };
 
-        // 2. Sharp fallback data URL (only used if Storage fails): up to 1440px, progressive quality <= 360KB
+        // 2. Compact fallback data URL (only used if Storage fails): light WebP/JPEG <= 260KB
         const buildSharpFallbackDataUrl = (): string => {
           const attempts: Array<{ maxDim: number; quality: number; mime: string }> = [
-            { maxDim: 1440, quality: 0.9, mime: 'image/webp' },
-            { maxDim: 1440, quality: 0.85, mime: 'image/jpeg' },
-            { maxDim: 1280, quality: 0.8, mime: 'image/jpeg' },
-            { maxDim: 1080, quality: 0.74, mime: 'image/jpeg' },
-            { maxDim: 960, quality: 0.68, mime: 'image/webp' },
-            { maxDim: 800, quality: 0.62, mime: 'image/jpeg' },
+            { maxDim: 1200, quality: 0.82, mime: 'image/webp' },
+            { maxDim: 1080, quality: 0.76, mime: 'image/webp' },
+            { maxDim: 1080, quality: 0.76, mime: 'image/jpeg' },
+            { maxDim: 900, quality: 0.7, mime: 'image/webp' },
+            { maxDim: 800, quality: 0.65, mime: 'image/jpeg' },
             { maxDim: 640, quality: 0.55, mime: 'image/jpeg' }
           ];
 
@@ -155,11 +191,13 @@ async function prepareImageForUpload(
             fbCanvas.height = fh;
             const fbCtx = fbCanvas.getContext('2d');
             if (!fbCtx) continue;
+            fbCtx.fillStyle = '#ffffff';
+            fbCtx.fillRect(0, 0, fw, fh);
             fbCtx.imageSmoothingEnabled = true;
             fbCtx.imageSmoothingQuality = 'high';
             fbCtx.drawImage(img, 0, 0, fw, fh);
             const dataUrl = fbCanvas.toDataURL(attempt.mime, attempt.quality);
-            if (dataUrl && dataUrl.length <= 360000) {
+            if (dataUrl && dataUrl.length <= 260000) {
               return dataUrl;
             }
           }
@@ -167,7 +205,7 @@ async function prepareImageForUpload(
         };
 
         const fallbackDataUrl = buildSharpFallbackDataUrl();
-        buildHighResBlob().then(({ blob, contentType, ext }) => {
+        buildOptimizedWebPBlob().then(({ blob, contentType, ext }) => {
           URL.revokeObjectURL(objectUrl);
           resolve({
             uploadBlob: blob,
@@ -329,6 +367,22 @@ export interface FirestoreErrorInfo {
   };
 }
 
+export function isNetworkOrOfflineError(error: unknown): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true;
+  const code = String((error as { code?: string })?.code || '').toLowerCase();
+  const msg = (error instanceof Error ? error.message : String(error || '')).toLowerCase();
+  return (
+    code === 'unavailable' ||
+    code === 'deadline-exceeded' ||
+    msg.includes('offline') ||
+    msg.includes('unavailable') ||
+    msg.includes('network') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('failed to fetch')
+  );
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -347,10 +401,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export async function testFirestoreConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    reportWeakNetwork(false);
     console.log('Connected to Firestore successfully.');
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Please check your Firebase configuration or internet connection.");
+    if (isNetworkOrOfflineError(error)) {
+      reportWeakNetwork(true);
+      console.warn('Weak or offline Firebase connection, serving local cache.');
     }
   }
 }
@@ -398,9 +454,15 @@ export function subscribeDoctors(
       });
       // Sort by creation desc
       doctorsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      reportWeakNetwork(false);
       onUpdate(doctorsList);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -541,9 +603,15 @@ export function subscribeLabs(
         });
       });
       labsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      reportWeakNetwork(false);
       onUpdate(labsList);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -759,9 +827,15 @@ export function subscribeBookings(
         });
       });
       bookingsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      reportWeakNetwork(false);
       onUpdate(bookingsList);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -899,6 +973,11 @@ export function subscribeReviews(
       onUpdate(reviewsList);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -1036,6 +1115,11 @@ export function subscribeNotifications(
       onUpdate(items);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -1220,6 +1304,11 @@ export function subscribePrescriptions(
       onUpdate(list);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
@@ -1310,6 +1399,11 @@ export function subscribeMedicalRecords(
       onUpdate(list);
     },
     (error) => {
+      if (isNetworkOrOfflineError(error)) {
+        reportWeakNetwork(true);
+        if (onError) onError(error);
+        return;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       if (onError) onError(error);
     }
